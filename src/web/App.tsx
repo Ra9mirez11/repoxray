@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: '20'
       - name: Run RepoXray Gate
-        run: npx repoxray . --ci --fail-below 80
+        run: npx rxray . --ci --fail-below 80
 `;
 
 function gradeTheme(grade: Grade): {
@@ -325,12 +325,12 @@ export function App() {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={() => triggerCopy('cli-cmd', 'npx repoxray .')}
+              onClick={() => triggerCopy('cli-cmd', 'npx rxray .')}
               className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 text-xs font-mono text-slate-300 transition cursor-pointer"
               title="Copy CLI command"
             >
               <span className="text-cyan-400">$</span>
-              <span>npx repoxray .</span>
+              <span>npx rxray .</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
                 {copiedKey === 'cli-cmd' ? 'COPIED' : 'COPY'}
               </span>
@@ -476,10 +476,10 @@ export function App() {
                 <span className="font-mono text-[11px] text-emerald-400">0 runtime deps</span>
               </div>
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#060911] border border-slate-800 font-mono text-xs text-slate-200">
-                <span>npx repoxray . --write-shield</span>
+                <span>npx rxray . --write-shield</span>
                 <button
                   type="button"
-                  onClick={() => triggerCopy('hero-cli', 'npx repoxray . --write-shield')}
+                  onClick={() => triggerCopy('hero-cli', 'npx rxray . --write-shield')}
                   className="text-cyan-400 hover:text-cyan-300 font-sans font-semibold cursor-pointer"
                 >
                   {copiedKey === 'hero-cli' ? 'COPIED' : 'COPY'}
@@ -1079,7 +1079,7 @@ export function App() {
 
       <footer className="border-t border-slate-800/80 py-5 mt-12 text-center text-xs font-mono text-slate-500">
         RepoXray Engine v0.1.0 — 100% Client-Side Execution | Powered by OSV.dev &amp; Public
-        Registry Telemetry | CLI: npx repoxray
+        Registry Telemetry | CLI: npx rxray
       </footer>
     </div>
   );

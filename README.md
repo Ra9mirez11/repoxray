@@ -1,16 +1,16 @@
-# RepoXray
+# RepoXray (`rxray`)
 
-[![npm version](https://img.shields.io/npm/v/repoxray?style=flat-square&labelColor=0f172a&color=38bdf8)](https://www.npmjs.com/package/repoxray)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-10b981?style=flat-square&labelColor=0f172a)](https://www.npmjs.com/package/repoxray)
+[![npm version](https://img.shields.io/npm/v/rxray?style=flat-square&labelColor=0f172a&color=38bdf8)](https://www.npmjs.com/package/rxray)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-10b981?style=flat-square&labelColor=0f172a)](https://www.npmjs.com/package/rxray)
 [![RepoXray Security & AI Score](https://img.shields.io/badge/RepoXray-A%2B%20(100%2F100)-10b981?style=flat-square&labelColor=0f172a)](https://github.com/Ra9mirez11/repoxray)
 [![License: MIT](https://img.shields.io/badge/License-MIT-94a3b8?style=flat-square&labelColor=0f172a)](./LICENSE)
 
 **Instant, zero-upload security, supply-chain, AI slopsquatting, secret exposure, and LLM context X-Ray for any codebase.**
 
-Audit any local folder or public GitHub repository in under 2 seconds—either in the **100% client-side Web App** (0 bytes uploaded to any server) or via the **zero-dependency CLI**:
+Audit any local folder or public GitHub repository in under 2 seconds—either in the **100% client-side Web App** (0 bytes uploaded to any server) or via the **5-letter zero-dependency CLI (`rxray`)**:
 
 ```bash
-npx repoxray .
+npx rxray .
 ```
 
 ---
@@ -29,23 +29,23 @@ Modern development moves fast with AI coding agents, MCP servers, and thousands 
 
 ## Quickstart (CLI)
 
-No global installation required. The published `repoxray` CLI has **0 runtime dependencies**.
+No global installation required. The published `rxray` CLI has **0 runtime dependencies**.
 
 ```bash
 # 1. Scan current directory
-npx repoxray .
+npx rxray .
 
 # 2. Scan any public GitHub repository remotely
-npx repoxray expressjs/express
+npx rxray expressjs/express
 
 # 3. Generate and write .aiignore + AGENTS.md guardrails into your project
-npx repoxray . --write-shield
+npx rxray . --write-shield
 
 # 4. Run offline (air-gapped static + secret + token scan only)
-npx repoxray . --offline
+npx rxray . --offline
 
 # 5. Export structured JSON report for compliance / SOC2 / NIS2 pipelines
-npx repoxray . --json > repoxray-audit.json
+npx rxray . --json > repoxray-audit.json
 ```
 
 ### CLI Options
@@ -78,7 +78,7 @@ jobs:
         with:
           node-version: '20'
       - name: Enforce RepoXray Gate
-        run: npx repoxray . --ci --fail-below 85
+        run: npx rxray . --ci --fail-below 85
 ```
 
 ---

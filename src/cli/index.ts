@@ -129,7 +129,7 @@ function printHelp(): void {
 ${ANSI.bold}${ANSI.cyan}RepoXray${ANSI.reset} — Security, Supply-Chain, Secret & AI Context X-Ray
 
 ${ANSI.bold}Usage:${ANSI.reset}
-  npx repoxray [path | owner/repo] [options]
+  npx rxray [path | owner/repo] [options]
 
 ${ANSI.bold}Options:${ANSI.reset}
   --write-shield       Generate & write .aiignore and AGENTS.md into target directory
