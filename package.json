@@ -1,0 +1,71 @@
+{
+  "name": "repoxray",
+  "version": "0.1.0",
+  "description": "Zero-upload security, supply-chain, slopsquatting, secret leak, and AI context X-Ray for any codebase (Web + npx CLI).",
+  "type": "module",
+  "license": "MIT",
+  "author": "Ra9mirez11 (https://github.com/Ra9mirez11)",
+  "homepage": "https://github.com/Ra9mirez11/repoxray#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ra9mirez11/repoxray.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ra9mirez11/repoxray/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/Ra9mirez11"
+  },
+  "bin": {
+    "repoxray": "./dist-cli/cli.mjs"
+  },
+  "files": [
+    "dist-cli",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build:web": "tsc --noEmit && vite build",
+    "build:cli": "node scripts/build-cli.mjs",
+    "build": "npm run build:web && npm run build:cli",
+    "prepublishOnly": "npm test && npm run build:cli",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "xray": "node dist-cli/cli.mjs ."
+  },
+  "keywords": [
+    "security",
+    "supply-chain",
+    "secret-scanner",
+    "slopsquatting",
+    "ai-agents",
+    "agents-md",
+    "cursorrules",
+    "aiignore",
+    "mcp",
+    "devsecops",
+    "vulnerability-scanner",
+    "osv"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^20.17.30",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.7.0",
+    "esbuild": "^0.25.12",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^5.8.3",
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist-web/
+dist-cli/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+.env
+.env.*
+*.pem
+*.key
+*.min.js
+*.map
