@@ -152,6 +152,38 @@ const SECRET_RULES: SecretRule[] = [
   },
 ];
 
+/**
+ * Redacts any inline secret tokens matched by SECRET_RULES inside an arbitrary code snippet
+ * so static code-safety evidence lines never leak live credentials into UI or AI prompts.
+ */
+export function redactInlineSecrets(line: string): string {
+  if (!line || line.length > 1500) return line;
+  let output = line;
+
+  for (const rule of SECRET_RULES) {
+    const flags = rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`;
+    const globalRegex = new RegExp(rule.pattern.source, flags);
+    output = output.replace(globalRegex, (...args) => {
+      const fullMatch = args[0] as string;
+      const group1 = typeof args[1] === 'string' ? (args[1] as string) : undefined;
+      const candidate =
+        rule.ruleId === 'SEC-AWS-KEY' ? fullMatch : (group1 ?? fullMatch);
+
+      if (isLikelyPlaceholder(candidate)) return fullMatch;
+      if (rule.minEntropy !== undefined && calculateEntropy(candidate) < rule.minEntropy) {
+        return fullMatch;
+      }
+
+      if (candidate !== fullMatch && fullMatch.includes(candidate)) {
+        return fullMatch.replace(candidate, redactSecret(candidate));
+      }
+      return redactSecret(fullMatch);
+    });
+  }
+
+  return output;
+}
+
 function isEnvFile(path: string): boolean {
   const base = path.split('/').pop() ?? path;
   if (!base.startsWith('.env')) return false;
@@ -162,6 +194,10 @@ function isEnvFile(path: string): boolean {
 export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
   const findings: Finding[] = [];
   let seq = 1;
+
+  const isRepoXraySelfScan =
+    files.some((f) => f.path === 'src/core/mcpParser.ts') &&
+    files.some((f) => f.path === 'src/core/supplyChain.ts');
 
   const gitignoreFile = files.find((f) => f.path === '.gitignore');
   const aiIgnoreFile = files.find(
@@ -204,8 +240,8 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
     const baseName = file.path.split('/').pop() ?? file.path;
     if (LOCKFILE_NAMES.has(baseName)) continue;
 
-    // Skip RepoXray's own signature definitions or test files when dogfooding
-    if (file.path === 'src/core/secretScanner.ts') continue;
+    // Skip RepoXray's own signature definitions when dogfooding
+    if (isRepoXraySelfScan && file.path === 'src/core/secretScanner.ts') continue;
 
     // 2a. Check live .env files present in workspace
     if (isEnvFile(file.path)) {
@@ -276,17 +312,18 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
             !strVal.startsWith('$') &&
             !isLikelyPlaceholder(strVal)
           ) {
+            const safeEnvKey = envKey.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 64);
             findings.push({
               id: `sec-${seq++}`,
               ruleId: 'SEC-MCP-PLAINTEXT-ENV',
               category: 'secrets',
               severity: 'critical',
-              title: `Plaintext Credential "${envKey}" in MCP Config (${srv.serverName})`,
+              title: `Plaintext Credential "${safeEnvKey}" in MCP Config (${srv.serverName})`,
               description:
                 'MCP configuration stores a literal credential in plaintext JSON instead of an environment variable reference.',
               file: file.path,
-              evidence: `${envKey}=${redactSecret(strVal)}`,
-              remediation: `Replace literal value with "\${${envKey}}" or load from OS secret store.`,
+              evidence: `${safeEnvKey}=${redactSecret(strVal)}`,
+              remediation: `Replace literal value with "\${${safeEnvKey}}" or load from OS secret store.`,
             });
           }
         }
@@ -304,7 +341,8 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
         const match = rule.pattern.exec(line);
         if (!match) continue;
 
-        const candidate = match[1] ?? match[0];
+        const candidate =
+          rule.ruleId === 'SEC-AWS-KEY' ? match[0] : (match[1] ?? match[0]);
         if (isLikelyPlaceholder(candidate)) continue;
 
         if (rule.minEntropy !== undefined) {

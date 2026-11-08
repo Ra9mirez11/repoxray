@@ -1,51 +1,10 @@
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { compileShield } from '../core/compiler';
+import { isBinaryFileName, SKIP_DIRS } from '../core/fsFilters';
 import { fetchGitHubRepoFiles, parseGitHubInput } from '../core/githubFetcher';
 import { runRepoXray } from '../core/scanner';
 import type { Severity, VirtualFile } from '../core/types';
-
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'dist-web',
-  'dist-cli',
-  'build',
-  '.next',
-  'coverage',
-  'target',
-  '.venv',
-  'venv',
-  '__pycache__',
-]);
-
-const BINARY_EXTS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.ico',
-  '.pdf',
-  '.zip',
-  '.tar',
-  '.gz',
-  '.7z',
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.wasm',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.otf',
-  '.mp3',
-  '.mp4',
-  '.pyc',
-  '.lockb',
-]);
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -57,6 +16,14 @@ const ANSI = {
   cyan: '\x1b[36m',
   white: '\x1b[37m',
 };
+
+/**
+ * Strips terminal control & ANSI/OSC escape sequences from untrusted filenames,
+ * package names, and code snippets to prevent terminal escape injection.
+ */
+function stripTerminalEscapes(input: string): string {
+  return input.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ');
+}
 
 function colorSeverity(sev: Severity): string {
   switch (sev) {
@@ -73,6 +40,76 @@ function colorSeverity(sev: Severity): string {
   }
 }
 
+async function safeWriteLocalFile(dest: string, content: string, force: boolean): Promise<'written' | 'skipped'> {
+  try {
+    const lst = await lstat(dest);
+    if (lst.isSymbolicLink()) {
+      throw new Error(`Refusing to write through symbolic link: ${dest}`);
+    }
+    if (!force) {
+      return 'skipped';
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.startsWith('Refusing to write')) {
+      throw err;
+    }
+    // ENOENT means file does not exist yet — safe to create
+  }
+
+  await writeFile(dest, content, 'utf8');
+  return 'written';
+}
+
+async function installPreCommitHook(targetDir: string, force: boolean): Promise<void> {
+  const rootDir = resolve(targetDir);
+  const gitDir = join(rootDir, '.git');
+
+  let isGitRepo = false;
+  try {
+    const st = await lstat(gitDir);
+    isGitRepo = st.isDirectory();
+  } catch {
+    isGitRepo = false;
+  }
+
+  if (!isGitRepo) {
+    console.error(`Error: "${rootDir}" does not contain a .git directory.`);
+    process.exit(1);
+  }
+
+  const hooksDir = join(gitDir, 'hooks');
+  await mkdir(hooksDir, { recursive: true });
+
+  const hookPath = join(hooksDir, 'pre-commit');
+  const hookScript = [
+    '#!/bin/sh',
+    '# RepoXray Pre-Commit Security Gate (installed via: npx rxray init-hook)',
+    '# Blocks commits introducing leaked credentials, unsafe execution sinks, or MCP risks (<1s offline)',
+    'if [ -x "./node_modules/.bin/rxray" ]; then',
+    '  ./node_modules/.bin/rxray . --offline --ci',
+    'else',
+    '  npx --yes rxray . --offline --ci',
+    'fi',
+    '',
+  ].join('\n');
+
+  const status = await safeWriteLocalFile(hookPath, hookScript, force);
+  if (status === 'skipped') {
+    console.log(
+      `${ANSI.yellow}Skipped pre-commit hook (already exists at ${hookPath}; pass --force to overwrite).${ANSI.reset}`,
+    );
+    return;
+  }
+
+  try {
+    await chmod(hookPath, 0o755);
+  } catch {
+    // Ignore chmod no-op on Windows filesystems
+  }
+
+  console.log(`${ANSI.green}Installed RepoXray pre-commit gate -> ${hookPath}${ANSI.reset}`);
+}
+
 async function walkLocalDirectory(rootDir: string): Promise<VirtualFile[]> {
   const results: VirtualFile[] = [];
 
@@ -86,13 +123,14 @@ async function walkLocalDirectory(rootDir: string): Promise<VirtualFile[]> {
 
     for (const entry of entries) {
       const fullPath = join(currentDir, entry.name);
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
-        const dot = entry.name.lastIndexOf('.');
-        const ext = dot >= 0 ? entry.name.slice(dot).toLowerCase() : '';
-        if (BINARY_EXTS.has(ext)) continue;
+        if (isBinaryFileName(entry.name)) continue;
 
         try {
           const st = await stat(fullPath);
@@ -130,10 +168,12 @@ ${ANSI.bold}${ANSI.cyan}RepoXray${ANSI.reset} — Security, Supply-Chain, Secret
 
 ${ANSI.bold}Usage:${ANSI.reset}
   npx rxray [path | owner/repo] [options]
+  npx rxray init-hook [path] [--force]
 
-${ANSI.bold}Options:${ANSI.reset}
+${ANSI.bold}Commands & Options:${ANSI.reset}
+  init-hook            Install fast (<1s) offline Git pre-commit security gate in .git/hooks/pre-commit
   --write-shield       Generate & write .aiignore and AGENTS.md into target directory
-  --force              Overwrite existing .aiignore / AGENTS.md when using --write-shield
+  --force              Overwrite existing .aiignore / AGENTS.md / pre-commit hook
   --offline            Skip live OSV.dev & npm registry network checks
   --json               Output raw JSON report (for CI/CD pipelines)
   --ci                 Fail with exit code 1 if Critical/High issues exist or score < 75
@@ -165,6 +205,13 @@ async function main(): Promise<void> {
   const positional = args.filter(
     (a, idx) => !a.startsWith('-') && (failBelowIdx < 0 || idx !== failBelowIdx + 1),
   );
+
+  if (positional[0] === 'init-hook') {
+    const hookTarget = positional[1] ?? '.';
+    await installPreCommitHook(hookTarget, force);
+    return;
+  }
+
   const target = positional[0] ?? '.';
 
   let projectName = '';
@@ -193,13 +240,15 @@ async function main(): Promise<void> {
     files = await walkLocalDirectory(localRootDir);
   } else if (parseGitHubInput(target)) {
     const remote = await fetchGitHubRepoFiles(target, (msg) => {
-      if (!jsonOutput) process.stderr.write(`${ANSI.dim}${msg}${ANSI.reset}\r`);
+      if (!jsonOutput) process.stderr.write(`${ANSI.dim}${stripTerminalEscapes(msg)}${ANSI.reset}\r`);
     });
     if (!jsonOutput) process.stderr.write(' '.repeat(72) + '\r');
     projectName = remote.projectName;
     files = remote.files;
   } else {
-    console.error(`Error: Target "${target}" is neither an existing directory nor a valid GitHub owner/repo.`);
+    console.error(
+      `Error: Target "${stripTerminalEscapes(target)}" is neither an existing directory nor a valid GitHub owner/repo.`,
+    );
     process.exit(1);
   }
 
@@ -215,7 +264,7 @@ async function main(): Promise<void> {
       report.score >= 85 ? ANSI.green : report.score >= 70 ? ANSI.yellow : ANSI.red;
 
     console.log(
-      `\n${ANSI.bold}${ANSI.cyan}REPOXRAY AUDIT${ANSI.reset}  ${ANSI.dim}|${ANSI.reset}  Target: ${ANSI.bold}${report.projectName}${ANSI.reset}  ${ANSI.dim}(${report.durationMs} ms)${ANSI.reset}`,
+      `\n${ANSI.bold}${ANSI.cyan}REPOXRAY AUDIT${ANSI.reset}  ${ANSI.dim}|${ANSI.reset}  Target: ${ANSI.bold}${stripTerminalEscapes(report.projectName)}${ANSI.reset}  ${ANSI.dim}(${report.durationMs} ms)${ANSI.reset}`,
     );
     console.log('─'.repeat(72));
     console.log(
@@ -234,13 +283,13 @@ async function main(): Promise<void> {
     } else {
       console.log(`${ANSI.bold}Findings (${report.findings.length}):${ANSI.reset}\n`);
       for (const f of report.findings.slice(0, 25)) {
-        const loc = f.line ? `${f.file}:${f.line}` : f.file;
-        console.log(`  ${colorSeverity(f.severity)} ${ANSI.bold}${f.title}${ANSI.reset}`);
+        const loc = stripTerminalEscapes(f.line ? `${f.file}:${f.line}` : f.file);
+        console.log(`  ${colorSeverity(f.severity)} ${ANSI.bold}${stripTerminalEscapes(f.title)}${ANSI.reset}`);
         console.log(`             ${ANSI.dim}Location:${ANSI.reset} ${loc}  ${ANSI.dim}(${f.ruleId})${ANSI.reset}`);
         if (f.evidence) {
-          console.log(`             ${ANSI.dim}Evidence:${ANSI.reset} ${f.evidence}`);
+          console.log(`             ${ANSI.dim}Evidence:${ANSI.reset} ${stripTerminalEscapes(f.evidence)}`);
         }
-        console.log(`             ${ANSI.dim}Fix:${ANSI.reset}      ${f.remediation}\n`);
+        console.log(`             ${ANSI.dim}Fix:${ANSI.reset}      ${stripTerminalEscapes(f.remediation)}\n`);
       }
       if (report.findings.length > 25) {
         console.log(
@@ -259,23 +308,13 @@ async function main(): Promise<void> {
 
     for (const item of writes) {
       const dest = join(localRootDir, item.name);
-      let exists = false;
-      try {
-        await stat(dest);
-        exists = true;
-      } catch {
-        exists = false;
-      }
-
-      if (exists && !force) {
+      const status = await safeWriteLocalFile(dest, item.content, force);
+      if (status === 'skipped') {
         if (!jsonOutput) {
           console.log(`${ANSI.yellow}Skipped ${item.name} (already exists; pass --force to overwrite).${ANSI.reset}`);
         }
-      } else {
-        await writeFile(dest, item.content, 'utf8');
-        if (!jsonOutput) {
-          console.log(`${ANSI.green}Wrote ${item.name} -> ${dest}${ANSI.reset}`);
-        }
+      } else if (!jsonOutput) {
+        console.log(`${ANSI.green}Wrote ${item.name} -> ${dest}${ANSI.reset}`);
       }
     }
   }

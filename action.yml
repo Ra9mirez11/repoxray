@@ -1,0 +1,41 @@
+name: 'RepoXray Security & Supply-Chain Gate'
+author: 'Ra9mirez11'
+description: 'Zero-dependency security, npm/PyPI CVEs, AI slopsquatting, .mcp.json/.env secret leak, and LLM context scanner.'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  target:
+    description: 'Target directory or owner/repo to scan'
+    required: false
+    default: '.'
+  fail-below:
+    description: 'Minimum passing security score (0-100)'
+    required: false
+    default: '80'
+  offline:
+    description: 'Skip external OSV.dev and npm registry queries (true/false)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Execute RepoXray Gate
+      shell: bash
+      env:
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_FAIL_BELOW: ${{ inputs.fail-below }}
+        INPUT_OFFLINE: ${{ inputs.offline }}
+      run: |
+        EXTRA_FLAGS=""
+        if [ "$INPUT_OFFLINE" = "true" ]; then
+          EXTRA_FLAGS="--offline"
+        fi
+        npx --yes rxray@latest "$INPUT_TARGET" --ci --fail-below "$INPUT_FAIL_BELOW" $EXTRA_FLAGS

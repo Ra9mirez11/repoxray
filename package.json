@@ -1,6 +1,6 @@
 {
   "name": "rxray",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "RepoXray CLI — Zero-upload security, supply-chain, AI slopsquatting, secret leak, and LLM context X-Ray for any codebase.",
   "type": "module",
   "license": "MIT",
@@ -34,6 +34,7 @@
     "build:web": "tsc --noEmit && vite build",
     "build:cli": "node scripts/build-cli.mjs",
     "build": "npm run build:web && npm run build:cli",
+    "deploy:web": "npm run build:web && npx --yes -p node@22 -p wrangler@latest wrangler pages deploy dist-web --project-name=repoxray --branch=main",
     "prepublishOnly": "npm test && npm run build:cli",
     "preview": "vite preview",
     "test": "vitest run",

@@ -1,3 +1,4 @@
+import { IGNORED_PATH_PREFIXES, isBinaryFileName } from './fsFilters';
 import type { VirtualFile } from './types';
 
 export interface ParsedGitHubTarget {
@@ -6,45 +7,49 @@ export interface ParsedGitHubTarget {
   branch?: string;
 }
 
-const IGNORED_PREFIXES = [
-  'node_modules/',
-  '.git/',
-  'dist/',
-  'build/',
-  '.next/',
-  'vendor/',
-  'target/',
-  '.venv/',
-  '__pycache__/',
-];
+interface CachedGitHubSnapshot {
+  cachedAt: number;
+  projectName: string;
+  files: VirtualFile[];
+}
 
-const BINARY_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.ico',
-  '.pdf',
-  '.zip',
-  '.tar',
-  '.gz',
-  '.7z',
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.wasm',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.otf',
-  '.mp3',
-  '.mp4',
-  '.mov',
-  '.pyc',
-  '.lockb',
-]);
+const SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readSessionCache(cacheKey: string): { projectName: string; files: VirtualFile[] } | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedGitHubSnapshot;
+    if (Date.now() - parsed.cachedAt > SESSION_CACHE_TTL_MS) {
+      sessionStorage.removeItem(cacheKey);
+      return null;
+    }
+    if (parsed.projectName && Array.isArray(parsed.files)) {
+      return { projectName: parsed.projectName, files: parsed.files };
+    }
+  } catch {
+    // Ignore storage access or JSON parse errors
+  }
+  return null;
+}
+
+function writeSessionCache(
+  cacheKey: string,
+  payload: { projectName: string; files: VirtualFile[] },
+): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    const entry: CachedGitHubSnapshot = {
+      cachedAt: Date.now(),
+      projectName: payload.projectName,
+      files: payload.files,
+    };
+    sessionStorage.setItem(cacheKey, JSON.stringify(entry));
+  } catch {
+    // Ignore sessionStorage quota limits on large repositories
+  }
+}
 
 export function parseGitHubInput(input: string): ParsedGitHubTarget | null {
   const cleaned = input.trim().replace(/\/+$/, '').replace(/\.git$/, '');
@@ -74,17 +79,11 @@ export function parseGitHubInput(input: string): ParsedGitHubTarget | null {
   return null;
 }
 
-function isBinaryPath(path: string): boolean {
-  const lower = path.toLowerCase();
-  const dot = lower.lastIndexOf('.');
-  if (dot < 0) return false;
-  return BINARY_EXTENSIONS.has(lower.slice(dot));
-}
-
 function filePriority(path: string): number {
   const base = path.split('/').pop() ?? path;
   if (
     base === 'package.json' ||
+    base === 'package-lock.json' ||
     base === 'requirements.txt' ||
     base === 'pyproject.toml' ||
     base === 'Cargo.toml' ||
@@ -120,6 +119,13 @@ export async function fetchGitHubRepoFiles(
   }
 
   const { owner, repo } = parsed;
+  const cacheKey = `rxray:gh:v1:${owner.toLowerCase()}/${repo.toLowerCase()}:${parsed.branch ?? 'default'}`;
+  const cached = readSessionCache(cacheKey);
+  if (cached) {
+    onProgress?.(`Loaded ${cached.projectName} from session cache (0 GitHub API calls)...`);
+    return cached;
+  }
+
   onProgress?.(`Resolving repository metadata for ${owner}/${repo}...`);
 
   let branch = parsed.branch;
@@ -150,6 +156,11 @@ export async function fetchGitHubRepoFiles(
     { headers: { Accept: 'application/vnd.github+json' } },
   );
 
+  if (treeRes.status === 403) {
+    throw new Error(
+      'GitHub public API rate limit reached for your IP. Scan a local folder directly (unlimited) or retry shortly.',
+    );
+  }
   if (!treeRes.ok) {
     throw new Error(`Failed to fetch repository tree (HTTP ${treeRes.status}).`);
   }
@@ -161,8 +172,8 @@ export async function fetchGitHubRepoFiles(
   const allBlobs = (treeJson.tree ?? []).filter(
     (item) =>
       item.type === 'blob' &&
-      !IGNORED_PREFIXES.some((p) => item.path.startsWith(p)) &&
-      !isBinaryPath(item.path),
+      !IGNORED_PATH_PREFIXES.some((p) => item.path.startsWith(p)) &&
+      !isBinaryFileName(item.path),
   );
 
   // Prioritize manifests, security files, and source code; download up to 90 files via raw CDN
@@ -216,8 +227,10 @@ export async function fetchGitHubRepoFiles(
 
   await Promise.all(Array.from({ length: concurrency }, () => downloadWorker()));
 
-  return {
+  const result = {
     projectName: `${owner}/${repo}`,
     files,
   };
+  writeSessionCache(cacheKey, result);
+  return result;
 }

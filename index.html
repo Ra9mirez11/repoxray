@@ -3,14 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RepoXray — Instant Supply-Chain, Secret & AI Context X-Ray</title>
+    <title>RepoXray — Catch Leaked Keys, Malware Packages &amp; AI Hallucinations Before You Push</title>
     <meta
       name="description"
-      content="100% client-side security, slopsquatting, secret exposure, and AI token context scanner for local folders and GitHub repositories. Zero code uploaded."
+      content="100% client-side security, OSV vulnerability, npm 0.0.1-security malware tombstone, AI slopsquatting, MCP secret, and LLM token context scanner. Zero code uploaded. CLI: npx rxray ."
     />
+    <meta
+      name="keywords"
+      content="RepoXray, rxray, supply chain security, slopsquatting scanner, MCP security, secret scanner, OSV scanner, AGENTS.md generator, aiignore, cursorrules"
+    />
+    <meta name="theme-color" content="#04070d" />
+    <link rel="canonical" href="https://repoxray.pages.dev/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- OpenGraph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="RepoXray" />
+    <meta property="og:url" content="https://repoxray.pages.dev/" />
+    <meta
+      property="og:title"
+      content="RepoXray — Zero-Upload Supply-Chain, Secret &amp; AI Guardrail X-Ray"
+    />
+    <meta
+      property="og:description"
+      content="Audit local folders or GitHub repos in 100% client-side RAM. Catch leaked keys, OSV CVEs, 0.0.1-security malware tombstones, and AI slopsquatting, or run npx rxray ."
+    />
+    <meta property="og:image" content="https://repoxray.pages.dev/og-card.svg" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="RepoXray — Catch Leaked Keys, Malware &amp; AI Hallucinations"
+    />
+    <meta
+      name="twitter:description"
+      content="100% in-browser RAM security &amp; supply-chain X-Ray + zero-dependency CLI (npx rxray). Compiles AGENTS.md &amp; .aiignore in seconds."
+    />
+    <meta name="twitter:image" content="https://repoxray.pages.dev/og-card.svg" />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "RepoXray",
+        "alternateName": "rxray",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web, Windows, macOS, Linux",
+        "url": "https://repoxray.pages.dev/",
+        "downloadUrl": "https://www.npmjs.com/package/rxray",
+        "codeRepository": "https://github.com/Ra9mirez11/repoxray",
+        "license": "https://opensource.org/licenses/MIT",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "Zero-upload supply-chain, AI slopsquatting, secret exposure, MCP config, and LLM context scanner for local directories, GitHub repositories, and CI/CD pipelines."
+      }
+    </script>
   </head>
-  <body class="bg-[#060911] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+  <body class="bg-[#04070d] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
     <div id="root"></div>
+    <noscript>
+      <div style="padding:2rem;font-family:monospace;color:#e2e8f0;background:#04070d;">
+        RepoXray runs 100% locally in your browser via Web Workers (0 bytes uploaded) so JavaScript is required for the web scanner. For terminal or CI/CD usage without a browser, run: npx rxray .
+      </div>
+    </noscript>
     <script type="module" src="/src/web/main.tsx"></script>
   </body>
 </html>

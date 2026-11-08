@@ -1,0 +1,21 @@
+# RepoXray (rxray)
+
+> Instant, zero-upload security, supply-chain, AI slopsquatting, secret exposure, MCP configuration, and LLM context scanner + deterministic guardrail compiler (`AGENTS.md`, `.cursorrules`, `.aiignore`).
+
+## Canonical Links
+- Live Web Scanner (100% Client-Side Web Worker, 0 bytes uploaded): https://repoxray.pages.dev
+- npm CLI Package (0 runtime dependencies, ~19 KB): https://www.npmjs.com/package/rxray
+- Source Code & GitHub Action: https://github.com/Ra9mirez11/repoxray
+
+## Primary Capabilities
+1. **Supply-Chain & Anti-Slopsquatting:** Queries `OSV.dev` (`npm`, `PyPI`, `crates.io`) with exact `package-lock.json` resolution, checks `registry.npmjs.org` for unregistered `404` hallucinated packages, newly published packages (`<= 21` days), `0.0.1-security` malware tombstones, wrong-registry MCP servers (`uvx` vs `npm`), vendor scope impersonation (`@anthropic/*` vs `@anthropic-ai/*`), and risky `postinstall` hooks.
+2. **Secret & MCP Hygiene:** Detects AWS, GitHub PAT, OpenAI/Anthropic, Google Cloud, Stripe Live, Slack, private keys, and DB URIs using regex + Shannon entropy, redacts all matched secrets automatically, and audits `.mcp.json` / `claude_desktop_config.json`.
+3. **Static Code Safety:** Flags dynamic `eval()` / `new Function()`, interpolated shell `exec()`, template-literal SQL injection, disabled TLS validation, raw HTML sinks, and unsafe Python `pickle` / `shell=True`.
+4. **AI Context & Guardrail Compiler:** Calculates active LLM token bloat and compiles project-specific `AGENTS.md`, `.cursorrules`, `.aiignore`, and an XML-sandboxed Zero-Token AI Fix Prompt.
+
+## Quick Commands for Developers & AI Agents
+- Audit local repository: `npx rxray .`
+- Generate `.aiignore` + `AGENTS.md`: `npx rxray . --write-shield`
+- Air-gapped / offline scan: `npx rxray . --offline`
+- Install Git pre-commit gate: `npx rxray init-hook`
+- CI/CD gate: `npx rxray . --ci --fail-below 85`

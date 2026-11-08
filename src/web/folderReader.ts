@@ -1,61 +1,35 @@
+import { isBinaryFileName, SKIP_DIRS } from '../core/fsFilters';
 import type { VirtualFile } from '../core/types';
 
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'dist-web',
-  'dist-cli',
-  'build',
-  '.next',
-  'coverage',
-  'target',
-  '.venv',
-  'venv',
-  '__pycache__',
-]);
+/** Hard caps to guarantee browser tab RAM never OOMs on massive monorepos */
+const MAX_SCANNED_FILES = 4_500;
+const MAX_SINGLE_FILE_BYTES = 300_000;
+const MAX_TOTAL_TEXT_BYTES = 25 * 1024 * 1024;
 
-const BINARY_EXTS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.ico',
-  '.pdf',
-  '.zip',
-  '.tar',
-  '.gz',
-  '.7z',
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.wasm',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.otf',
-  '.mp3',
-  '.mp4',
-  '.pyc',
-  '.lockb',
-]);
-
-function isBinaryName(name: string): boolean {
-  const dot = name.lastIndexOf('.');
-  if (dot < 0) return false;
-  return BINARY_EXTS.has(name.slice(dot).toLowerCase());
+interface ReaderBudget {
+  loadedTextBytes: number;
+  fileCount: number;
 }
 
-async function fileObjToVirtual(file: File, relPath: string): Promise<VirtualFile | null> {
+async function fileObjToVirtual(
+  file: File,
+  relPath: string,
+  budget: ReaderBudget,
+): Promise<VirtualFile | null> {
+  if (budget.fileCount >= MAX_SCANNED_FILES) return null;
+
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   const segments = normalized.split('/');
   if (segments.some((s) => SKIP_DIRS.has(s))) return null;
   const baseName = segments[segments.length - 1] ?? normalized;
-  if (isBinaryName(baseName)) return null;
+  if (isBinaryFileName(baseName)) return null;
 
-  if (file.size > 300_000) {
+  budget.fileCount += 1;
+
+  if (
+    file.size > MAX_SINGLE_FILE_BYTES ||
+    budget.loadedTextBytes + file.size > MAX_TOTAL_TEXT_BYTES
+  ) {
     return {
       path: normalized,
       content: '',
@@ -64,6 +38,7 @@ async function fileObjToVirtual(file: File, relPath: string): Promise<VirtualFil
   }
 
   const content = await file.text();
+  budget.loadedTextBytes += file.size;
   return {
     path: normalized,
     content,
@@ -85,10 +60,13 @@ export async function pickDirectoryNative(): Promise<{
 
   const rootHandle = await win.showDirectoryPicker();
   const files: VirtualFile[] = [];
+  const budget: ReaderBudget = { loadedTextBytes: 0, fileCount: 0 };
 
   async function traverse(dirHandle: FileSystemDirectoryHandle, prefix: string): Promise<void> {
+    if (budget.fileCount >= MAX_SCANNED_FILES) return;
     const iterable = dirHandle as unknown as AsyncIterable<[string, FileSystemHandle]>;
     for await (const [name, handle] of iterable) {
+      if (budget.fileCount >= MAX_SCANNED_FILES) break;
       if (handle.kind === 'directory') {
         if (SKIP_DIRS.has(name)) continue;
         await traverse(
@@ -96,10 +74,10 @@ export async function pickDirectoryNative(): Promise<{
           prefix ? `${prefix}/${name}` : name,
         );
       } else if (handle.kind === 'file') {
-        if (isBinaryName(name)) continue;
+        if (isBinaryFileName(name)) continue;
         const f = await (handle as FileSystemFileHandle).getFile();
         const rel = prefix ? `${prefix}/${name}` : name;
-        const vf = await fileObjToVirtual(f, rel);
+        const vf = await fileObjToVirtual(f, rel, budget);
         if (vf) files.push(vf);
       }
     }
@@ -118,9 +96,11 @@ export async function readFileListFromInput(fileList: FileList): Promise<{
   files: VirtualFile[];
 }> {
   const files: VirtualFile[] = [];
+  const budget: ReaderBudget = { loadedTextBytes: 0, fileCount: 0 };
   let rootName = 'local-folder';
 
   for (let i = 0; i < fileList.length; i++) {
+    if (budget.fileCount >= MAX_SCANNED_FILES) break;
     const f = fileList[i];
     const rawRel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
     const parts = rawRel.split('/');
@@ -128,7 +108,7 @@ export async function readFileListFromInput(fileList: FileList): Promise<{
       rootName = parts[0];
     }
     const stripped = parts.length > 1 ? parts.slice(1).join('/') : rawRel;
-    const vf = await fileObjToVirtual(f, stripped);
+    const vf = await fileObjToVirtual(f, stripped, budget);
     if (vf) files.push(vf);
   }
 
@@ -167,12 +147,15 @@ export async function readDroppedItems(dataTransfer: DataTransfer): Promise<{
   }
 
   const files: VirtualFile[] = [];
+  const budget: ReaderBudget = { loadedTextBytes: 0, fileCount: 0 };
   const rootName =
     entries.length === 1 && entries[0].isDirectory ? entries[0].name : 'dropped-project';
 
   async function walkEntry(entry: WebkitEntry, prefix: string): Promise<void> {
+    if (budget.fileCount >= MAX_SCANNED_FILES) return;
+
     if (entry.isFile && entry.file) {
-      if (isBinaryName(entry.name)) return;
+      if (isBinaryFileName(entry.name)) return;
       const fileObj = await new Promise<File | null>((res) =>
         entry.file!(
           (f) => res(f),
@@ -181,7 +164,7 @@ export async function readDroppedItems(dataTransfer: DataTransfer): Promise<{
       );
       if (!fileObj) return;
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const vf = await fileObjToVirtual(fileObj, rel);
+      const vf = await fileObjToVirtual(fileObj, rel, budget);
       if (vf) files.push(vf);
     } else if (entry.isDirectory && entry.createReader) {
       if (SKIP_DIRS.has(entry.name)) return;
@@ -207,12 +190,14 @@ export async function readDroppedItems(dataTransfer: DataTransfer): Promise<{
             : entry.name;
 
       for (const child of childEntries) {
+        if (budget.fileCount >= MAX_SCANNED_FILES) break;
         await walkEntry(child, nextPrefix);
       }
     }
   }
 
   for (const e of entries) {
+    if (budget.fileCount >= MAX_SCANNED_FILES) break;
     await walkEntry(e, '');
   }
 

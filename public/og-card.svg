@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#04070d"/>
+      <stop offset="100%" stop-color="#091326"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="48" y="48" width="1104" height="534" rx="28" fill="#090f1d" stroke="#1e293b" stroke-width="2"/>
+  <rect x="88" y="92" width="380" height="36" rx="18" fill="#083344" stroke="#06b6d4"/>
+  <text x="112" y="116" fill="#67e8f9" font-family="monospace" font-size="16" font-weight="700">100% CLIENT-SIDE  |  0 BYTES UPLOADED</text>
+  <text x="88" y="210" fill="#ffffff" font-family="system-ui, sans-serif" font-size="62" font-weight="800">RepoXray (npx rxray)</text>
+  <text x="88" y="282" fill="url(#accent)" font-family="system-ui, sans-serif" font-size="38" font-weight="700">Catch Leaked Keys, Malware &amp; AI Hallucinations</text>
+  <text x="88" y="348" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="25">OSV CVEs  •  0.0.1-security Tombstones  •  MCP Secrets  •  AGENTS.md &amp; .aiignore</text>
+  <rect x="88" y="420" width="460" height="68" rx="14" fill="#04070d" stroke="#22d3ee"/>
+  <text x="118" y="463" fill="#e2e8f0" font-family="monospace" font-size="26" font-weight="700">$ npx rxray . --write-shield</text>
+  <rect x="900" y="420" width="200" height="68" rx="14" fill="#064e3b" stroke="#10b981"/>
+  <text x="930" y="463" fill="#6ee7b7" font-family="monospace" font-size="26" font-weight="700">A+ 100/100</text>
+</svg>

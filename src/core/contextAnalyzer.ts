@@ -1,3 +1,4 @@
+import { redactInlineSecrets } from './secretScanner';
 import type {
   DetectedStack,
   Finding,
@@ -139,6 +140,10 @@ export function analyzeContextAndCode(files: VirtualFile[]): {
   const findings: Finding[] = [];
   let seq = 1;
 
+  const isRepoXraySelfScan =
+    files.some((f) => f.path === 'src/core/mcpParser.ts') &&
+    files.some((f) => f.path === 'src/core/supplyChain.ts');
+
   const aiIgnoreFile = files.find(
     (f) => f.path === '.aiignore' || f.path === '.cursorignore' || f.path === '.claudeignore',
   );
@@ -251,11 +256,13 @@ export function analyzeContextAndCode(files: VirtualFile[]): {
       bloatReason,
     });
 
-    // Code safety scan (skip RepoXray's own rule file and demo fixtures when dogfooding)
+    // Code safety scan (only skip RepoXray's own rule definitions, synthetic demo, and self-test when dogfooding;
+    // external repositories' tests/ directories ARE scanned so test-runner backdoors cannot hide there)
     if (
-      file.path === 'src/core/contextAnalyzer.ts' ||
-      file.path === 'src/core/demoPreset.ts' ||
-      file.path.startsWith('tests/')
+      isRepoXraySelfScan &&
+      (file.path === 'src/core/contextAnalyzer.ts' ||
+        file.path === 'src/core/demoPreset.ts' ||
+        file.path === 'tests/scanner.test.ts')
     ) {
       continue;
     }
@@ -281,7 +288,7 @@ export function analyzeContextAndCode(files: VirtualFile[]): {
               description: rule.description,
               file: file.path,
               line: i + 1,
-              evidence: trimmed.slice(0, 110),
+              evidence: redactInlineSecrets(trimmed).slice(0, 110),
               remediation: rule.remediation,
             });
           }
