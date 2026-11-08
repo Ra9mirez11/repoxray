@@ -1,0 +1,30 @@
+name: New Detection Rule Proposal
+description: Propose a new supply-chain, slopsquatting, secret, MCP, or SAST rule
+title: "[Rule]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Pillar / Category
+      options:
+        - Supply-Chain & Slopsquatting (SC-*)
+        - Secrets & MCP Hygiene (SEC-*)
+        - Static Code Safety (CODE-*)
+        - AI Context & Guardrail Compiler (AI-*)
+    validations:
+      required: true
+  - type: textarea
+    id: threat
+    attributes:
+      label: Threat / Attack Vector
+      description: Describe the real-world vulnerability, malware pattern, or misconfiguration this rule catches.
+    validations:
+      required: true
+  - type: textarea
+    id: pattern
+    attributes:
+      label: Proposed Detection Heuristic & False-Positive Controls
+      description: Include synthetic positive and negative test cases.
+    validations:
+      required: true

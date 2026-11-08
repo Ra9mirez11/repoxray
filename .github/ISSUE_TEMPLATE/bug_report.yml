@@ -1,0 +1,40 @@
+name: Bug Report / False Positive
+description: Report a scanner bug, parser crash, or false-positive rule match
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected Surface
+      options:
+        - CLI (npx rxray)
+        - Web Scanner (repoxray.pages.dev)
+        - Core Engine / Detection Rule
+        - GitHub Action (action.yml)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: RepoXray Version & Environment
+      description: Output of npm view rxray version, OS, and Node/Browser version
+      placeholder: "rxray 0.3.0, Node 22.x / Chrome 135 on Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal Reproduction (Redacted)
+      description: Provide a synthetic/redacted snippet or rule ID (never paste real API keys or secrets!)
+      placeholder: |
+        Rule triggered: SEC-... or SC-...
+        Synthetic input: ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
