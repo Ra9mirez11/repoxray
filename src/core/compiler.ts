@@ -174,7 +174,11 @@ export function compileShield(report: ScanReport): CompiledShield {
   const shieldsUrl = `https://img.shields.io/badge/RepoXray-${encodeURIComponent(
     `${report.grade} (${report.score}/100)`,
   )}-${badgeColorHex}?style=flat-square&labelColor=0f172a`;
-  const badgeMarkdown = `[![RepoXray Security & AI Score](${shieldsUrl})](https://github.com/Ra9mirez11/repoxray)`;
+  const isGitHubSlug = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(report.projectName);
+  const targetBadgeLink = isGitHubSlug
+    ? `https://repoxray.pages.dev/?repo=${encodeURIComponent(report.projectName)}`
+    : 'https://repoxray.pages.dev';
+  const badgeMarkdown = `[![RepoXray Security & AI Score](${shieldsUrl})](${targetBadgeLink})`;
 
   const critCount = report.findings.filter((f) => f.severity === 'critical').length;
   const highCount = report.findings.filter((f) => f.severity === 'high').length;
@@ -184,7 +188,7 @@ export function compileShield(report: ScanReport): CompiledShield {
     `- Security & Supply-Chain Score: ${report.score}/100 (Grade ${report.grade})`,
     `- Findings: ${critCount} Critical, ${highCount} High across ${report.dependencies.length} dependencies & ${report.totalFiles} files`,
     `- AI Context Footprint: ${report.totalTokens.toLocaleString()} tokens (${report.tokenSavingsPercent}% reducible via .aiignore)`,
-    `Run yours locally: npx rxray .`,
+    `Try it live: ${targetBadgeLink}  |  CLI: npx rxray .`,
   ].join('\n');
 
   const mdReportLines: string[] = [

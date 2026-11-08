@@ -1,11 +1,11 @@
 {
   "name": "rxray",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "RepoXray CLI — Zero-upload security, supply-chain, AI slopsquatting, secret leak, and LLM context X-Ray for any codebase.",
   "type": "module",
   "license": "MIT",
   "author": "Ra9mirez11 (https://github.com/Ra9mirez11)",
-  "homepage": "https://github.com/Ra9mirez11/repoxray#readme",
+  "homepage": "https://repoxray.pages.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ra9mirez11/repoxray.git"

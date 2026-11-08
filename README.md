@@ -1,13 +1,16 @@
 # RepoXray (`rxray`)
 
+[![Web Scanner](https://img.shields.io/badge/Live_Scanner-repoxray.pages.dev-06b6d4?style=flat-square&labelColor=0f172a)](https://repoxray.pages.dev)
 [![npm version](https://img.shields.io/npm/v/rxray?style=flat-square&labelColor=0f172a&color=38bdf8)](https://www.npmjs.com/package/rxray)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-10b981?style=flat-square&labelColor=0f172a)](https://www.npmjs.com/package/rxray)
-[![RepoXray Security & AI Score](https://img.shields.io/badge/RepoXray-A%2B%20(100%2F100)-10b981?style=flat-square&labelColor=0f172a)](https://github.com/Ra9mirez11/repoxray)
+[![RepoXray Security & AI Score](https://img.shields.io/badge/RepoXray-A%2B%20(100%2F100)-10b981?style=flat-square&labelColor=0f172a)](https://repoxray.pages.dev/?repo=Ra9mirez11/repoxray)
 [![License: MIT](https://img.shields.io/badge/License-MIT-94a3b8?style=flat-square&labelColor=0f172a)](./LICENSE)
 
 **Instant, zero-upload security, supply-chain, AI slopsquatting, secret exposure, and LLM context X-Ray for any codebase.**
 
-Audit any local folder or public GitHub repository in under 2 seconds—either in the **100% client-side Web App** (0 bytes uploaded to any server) or via the **5-letter zero-dependency CLI (`rxray`)**:
+- **Browser App (0 bytes uploaded):** [https://repoxray.pages.dev](https://repoxray.pages.dev)
+- **Live Self-Audit Demo:** [https://repoxray.pages.dev/?repo=Ra9mirez11/repoxray](https://repoxray.pages.dev/?repo=Ra9mirez11/repoxray)
+- **5-Letter Zero-Dependency CLI:**
 
 ```bash
 npx rxray .
@@ -29,7 +32,7 @@ Modern development moves fast with AI coding agents, MCP servers, and thousands 
 
 ## Quickstart (CLI)
 
-No global installation required. The published `rxray` CLI has **0 runtime dependencies**.
+No global installation required. The published `rxray` CLI (`~19 KB`) has **0 runtime dependencies**.
 
 ```bash
 # 1. Scan current directory
