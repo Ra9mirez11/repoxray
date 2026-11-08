@@ -14,6 +14,74 @@ interface CachedGitHubSnapshot {
 }
 
 const SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+const GITHUB_API_TIMEOUT_MS = 2_800;
+const RAW_CDN_TIMEOUT_MS = 4_500;
+
+/**
+ * Priority manifest, guardrail, config, CI, and source entrypoint paths probed directly
+ * via Fastly CDN (`raw.githubusercontent.com`) whenever `api.github.com` is rate-limited (403)
+ * or experiencing a 502/503/504 outage (which lacks CORS headers and triggers `Failed to fetch`).
+ */
+const RAW_CDN_FALLBACK_PATHS = [
+  'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'requirements.txt',
+  'pyproject.toml',
+  'Cargo.toml',
+  '.gitignore',
+  '.aiignore',
+  '.cursorignore',
+  '.claudeignore',
+  'AGENTS.md',
+  'CLAUDE.md',
+  '.cursorrules',
+  '.mcp.json',
+  'mcp.json',
+  '.env',
+  '.env.example',
+  'README.md',
+  'LICENSE',
+  'SECURITY.md',
+  'action.yml',
+  'index.html',
+  'index.js',
+  'index.ts',
+  'lib/index.js',
+  'lib/express.js',
+  'src/index.ts',
+  'src/index.js',
+  'src/main.ts',
+  'src/main.tsx',
+  'src/web/main.tsx',
+  'src/web/App.tsx',
+  'src/cli/index.ts',
+  'src/core/scanner.ts',
+  'src/core/supplyChain.ts',
+  'src/core/secretScanner.ts',
+  'src/core/contextAnalyzer.ts',
+  'src/core/compiler.ts',
+  'src/core/mcpParser.ts',
+  '.github/workflows/ci.yml',
+  '.github/workflows/test.yml',
+  '.github/workflows/main.yml',
+  '.github/workflows/publish-npm.yml',
+];
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = GITHUB_API_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function readSessionCache(cacheKey: string): { projectName: string; files: VirtualFile[] } | null {
   try {
@@ -107,6 +175,151 @@ function filePriority(path: string): number {
   return 3;
 }
 
+function buildRawGitHubUrl(owner: string, repo: string, branch: string, filePath: string): string {
+  const encodedPath = filePath
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/${encodeURIComponent(branch)}/${encodedPath}`;
+}
+
+function extractReferencedSourcePaths(pkgJsonContent: string): string[] {
+  const discovered = new Set<string>();
+  try {
+    const pkg = JSON.parse(pkgJsonContent) as Record<string, unknown>;
+    const candidates: unknown[] = [pkg.main, pkg.module, pkg.types];
+    if (typeof pkg.bin === 'string') {
+      candidates.push(pkg.bin);
+    } else if (pkg.bin && typeof pkg.bin === 'object') {
+      candidates.push(...Object.values(pkg.bin as Record<string, unknown>));
+    }
+
+    for (const item of candidates) {
+      if (typeof item !== 'string') continue;
+      const normalized = item.replace(/^\.\//, '').replace(/^\/+/, '');
+      if (
+        normalized &&
+        !IGNORED_PATH_PREFIXES.some((p) => normalized.startsWith(p)) &&
+        !isBinaryFileName(normalized)
+      ) {
+        discovered.add(normalized);
+      }
+    }
+  } catch {
+    // Ignore malformed package.json
+  }
+  return Array.from(discovered);
+}
+
+/**
+ * Outage & rate-limit resilient fallback that streams repository manifests, security rules,
+ * and entrypoints directly from `raw.githubusercontent.com` (Fastly CDN, `ACAO: *`, 0 API quota)
+ * when `api.github.com` returns 403/429/5xx or fails CORS due to a GitHub API brownout.
+ */
+export async function fetchViaRawCdnFallback(
+  owner: string,
+  repo: string,
+  explicitBranch?: string,
+  onProgress?: (msg: string) => void,
+): Promise<{ projectName: string; files: VirtualFile[] }> {
+  onProgress?.(
+    `GitHub REST API unavailable — switching to direct Fastly Raw CDN stream for ${owner}/${repo}...`,
+  );
+
+  const candidateBranches = explicitBranch
+    ? [explicitBranch]
+    : ['main', 'master', 'v4', 'canary', 'develop'];
+
+  let resolvedBranch: string | null = null;
+
+  for (const candidate of candidateBranches) {
+    const probes = ['package.json', 'README.md', 'README', '.gitignore', 'Cargo.toml', 'pyproject.toml'];
+    const checks = await Promise.all(
+      probes.map(async (probeFile) => {
+        try {
+          const res = await fetchWithTimeout(
+            buildRawGitHubUrl(owner, repo, candidate, probeFile),
+            { method: 'GET' },
+            RAW_CDN_TIMEOUT_MS,
+          );
+          if (res.ok) {
+            const text = await res.text();
+            return { path: probeFile, content: text };
+          }
+        } catch {
+          // Ignore individual probe error
+        }
+        return null;
+      }),
+    );
+
+    const hits = checks.filter((x): x is { path: string; content: string } => x !== null);
+    if (hits.length > 0) {
+      resolvedBranch = candidate;
+      const fileMap = new Map<string, VirtualFile>();
+      for (const h of hits) {
+        fileMap.set(h.path, {
+          path: h.path,
+          content: h.content.length > 250_000 ? '' : h.content,
+          sizeBytes: h.content.length,
+        });
+      }
+
+      const remainingQueue = RAW_CDN_FALLBACK_PATHS.filter((p) => !fileMap.has(p));
+      const pkgHit = hits.find((h) => h.path === 'package.json');
+      if (pkgHit) {
+        for (const extra of extractReferencedSourcePaths(pkgHit.content)) {
+          if (!fileMap.has(extra) && !remainingQueue.includes(extra)) {
+            remainingQueue.push(extra);
+          }
+        }
+      }
+
+      onProgress?.(`Streaming priority manifests & source files via Raw CDN (${owner}/${repo}@${resolvedBranch})...`);
+
+      let cursor = 0;
+      const concurrency = 10;
+      async function rawWorker(): Promise<void> {
+        while (cursor < remainingQueue.length) {
+          const idx = cursor++;
+          const relPath = remainingQueue[idx];
+          try {
+            const res = await fetchWithTimeout(
+              buildRawGitHubUrl(owner, repo, resolvedBranch!, relPath),
+              { method: 'GET' },
+              RAW_CDN_TIMEOUT_MS,
+            );
+            if (res.ok) {
+              const text = await res.text();
+              const isLockfile = relPath === 'package-lock.json';
+              fileMap.set(relPath, {
+                path: relPath,
+                content: text.length > 250_000 && !isLockfile ? '' : text,
+                sizeBytes: text.length,
+              });
+            }
+          } catch {
+            // Skip missing optional path
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: concurrency }, () => rawWorker()));
+
+      return {
+        projectName: `${owner}/${repo}`,
+        files: Array.from(fileMap.values()),
+      };
+    }
+  }
+
+  throw new Error(
+    `Unable to reach "${owner}/${repo}" (GitHub API is currently degraded/rate-limited and repository was not found on standard branches via CDN). Verify the owner/repo name or scan a local folder.`,
+  );
+}
+
 export async function fetchGitHubRepoFiles(
   input: string,
   onProgress?: (msg: string) => void,
@@ -129,47 +342,56 @@ export async function fetchGitHubRepoFiles(
   onProgress?.(`Resolving repository metadata for ${owner}/${repo}...`);
 
   let branch = parsed.branch;
-  if (!branch) {
-    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers: { Accept: 'application/vnd.github+json' },
-    });
-    if (repoRes.status === 404) {
+  let treeItems: Array<{ path: string; type: string; size?: number }> | null = null;
+
+  try {
+    if (!branch) {
+      const repoRes = await fetchWithTimeout(
+        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+        GITHUB_API_TIMEOUT_MS,
+      );
+      if (repoRes.status === 404) {
+        throw new Error(`NOT_FOUND:${owner}/${repo}`);
+      }
+      if (!repoRes.ok) {
+        throw new Error(`GH_API_HTTP_${repoRes.status}`);
+      }
+      const repoMeta = (await repoRes.json()) as { default_branch?: string };
+      branch = repoMeta.default_branch ?? 'main';
+    }
+
+    onProgress?.(`Fetching file tree (${owner}/${repo}@${branch})...`);
+    const treeRes = await fetchWithTimeout(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+        repo,
+      )}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+      GITHUB_API_TIMEOUT_MS,
+    );
+
+    if (treeRes.status === 404) {
+      throw new Error(`NOT_FOUND:${owner}/${repo}`);
+    }
+    if (!treeRes.ok) {
+      throw new Error(`GH_TREE_HTTP_${treeRes.status}`);
+    }
+
+    const treeJson = (await treeRes.json()) as {
+      tree?: Array<{ path: string; type: string; size?: number }>;
+    };
+    treeItems = treeJson.tree ?? [];
+  } catch (apiErr: unknown) {
+    if (apiErr instanceof Error && apiErr.message.startsWith('NOT_FOUND:')) {
       throw new Error(`Repository "${owner}/${repo}" was not found or is private.`);
     }
-    if (repoRes.status === 403) {
-      throw new Error(
-        'GitHub public API rate limit reached for your IP. Scan a local folder directly (unlimited) or retry shortly.',
-      );
-    }
-    if (!repoRes.ok) {
-      throw new Error(`GitHub API returned HTTP ${repoRes.status}.`);
-    }
-    const repoMeta = (await repoRes.json()) as { default_branch?: string };
-    branch = repoMeta.default_branch ?? 'main';
+    // Automatic seamless failover to Fastly Raw CDN when api.github.com throws 403/503/504/CORS TypeError
+    const fallbackResult = await fetchViaRawCdnFallback(owner, repo, parsed.branch, onProgress);
+    writeSessionCache(cacheKey, fallbackResult);
+    return fallbackResult;
   }
 
-  onProgress?.(`Fetching file tree (${owner}/${repo}@${branch})...`);
-  const treeRes = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(
-      branch,
-    )}?recursive=1`,
-    { headers: { Accept: 'application/vnd.github+json' } },
-  );
-
-  if (treeRes.status === 403) {
-    throw new Error(
-      'GitHub public API rate limit reached for your IP. Scan a local folder directly (unlimited) or retry shortly.',
-    );
-  }
-  if (!treeRes.ok) {
-    throw new Error(`Failed to fetch repository tree (HTTP ${treeRes.status}).`);
-  }
-
-  const treeJson = (await treeRes.json()) as {
-    tree?: Array<{ path: string; type: string; size?: number }>;
-  };
-
-  const allBlobs = (treeJson.tree ?? []).filter(
+  const allBlobs = treeItems.filter(
     (item) =>
       item.type === 'blob' &&
       !IGNORED_PATH_PREFIXES.some((p) => item.path.startsWith(p)) &&
@@ -201,16 +423,10 @@ export async function fetchGitHubRepoFiles(
     while (cursor < toDownload.length) {
       const idx = cursor++;
       const item = toDownload[idx];
-      const encodedPath = item.path
-        .split('/')
-        .map((seg) => encodeURIComponent(seg))
-        .join('/');
-      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-        branch!,
-      )}/${encodedPath}`;
+      const rawUrl = buildRawGitHubUrl(owner, repo, branch!, item.path);
 
       try {
-        const res = await fetch(rawUrl);
+        const res = await fetchWithTimeout(rawUrl, {}, RAW_CDN_TIMEOUT_MS);
         if (res.ok) {
           const text = await res.text();
           files.push({
