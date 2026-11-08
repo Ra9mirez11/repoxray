@@ -1330,7 +1330,7 @@ export function App() {
       <footer className="relative z-10 border-t border-white/10 bg-[#04070d]/90 py-6 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-2 text-center">
           <div className="text-xs font-mono text-slate-400">
-            RepoXray Engine v0.3.0 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
+            RepoXray Engine v0.3.1 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
             Public Registry Telemetry | CLI: <code className="text-cyan-300">npx rxray</code>
           </div>
           <p className="text-[11px] text-slate-500 max-w-3xl mx-auto leading-relaxed">

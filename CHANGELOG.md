@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-08
+
+### Changed
+- **Unified Brand & Marketplace Action Identity (`logo.svg`, `favicon.svg`, `og-card.svg`, `action.yml`):** Replaced generic shield iconography across the Web UI, favicon, OpenGraph card, README, and GitHub Action metadata (`crosshair` / `green`) with the RepoXray X-Ray reticle emblem.
+- **GitHub Community Standards (`CODE_OF_CONDUCT.md`, `ACCESSIBILITY.md`, `.github/ISSUE_TEMPLATE/*`):** Added complete community health documentation, structured YAML issue forms, and PR checklist.
+
+### Fixed
+- **Outage-Proof Fastly Raw CDN Failover (`githubFetcher.ts`):** Added automatic `2.8s` timeout and seamless failover from `api.github.com` to `raw.githubusercontent.com` so remote repository scans remain operational during GitHub REST API `503`/`504` outages.
+
 ## [0.3.0] - 2026-11-08
 
 ### Added
