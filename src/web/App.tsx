@@ -321,18 +321,51 @@ export function App() {
       <header className="border-b border-white/10 bg-[#050912]/80 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-400/30 shadow-[0_0_20px_-4px_rgba(34,211,238,0.4)] flex items-center justify-center">
+            <a
+              href="/"
+              aria-label="RepoXray Home"
+              className="w-10 h-10 shrink-0 rounded-xl shadow-[0_0_24px_-4px_rgba(34,211,238,0.45)] hover:shadow-[0_0_28px_-2px_rgba(52,211,153,0.55)] transition-shadow flex items-center justify-center"
+            >
               <svg
-                className="w-5 h-5 text-cyan-400"
-                viewBox="0 0 24 24"
+                className="w-10 h-10"
+                viewBox="0 0 64 64"
                 fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+                aria-hidden="true"
               >
-                <path d="M12 2L3 7v6c0 5.25 3.75 10.15 9 11 5.25-.85 9-5.75 9-11V7l-9-5z" />
-                <path d="M9 12l2 2 4-4" />
+                <defs>
+                  <linearGradient id="nav-rx-bg" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#081226" />
+                    <stop offset="100%" stopColor="#040811" />
+                  </linearGradient>
+                  <linearGradient id="nav-rx-rim" x1="2" y1="2" x2="62" y2="62" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#38bdf8" />
+                    <stop offset="100%" stopColor="#10b981" />
+                  </linearGradient>
+                  <linearGradient id="nav-rx-x1" x1="18" y1="18" x2="46" y2="46" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#ffffff" />
+                    <stop offset="50%" stopColor="#38bdf8" />
+                    <stop offset="100%" stopColor="#10b981" />
+                  </linearGradient>
+                  <linearGradient id="nav-rx-x2" x1="46" y1="18" x2="18" y2="46" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#67e8f9" />
+                    <stop offset="100%" stopColor="#34d399" />
+                  </linearGradient>
+                </defs>
+                <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#nav-rx-bg)" stroke="url(#nav-rx-rim)" strokeWidth="2.2" />
+                <g stroke="#38bdf8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 20v-6a3 3 0 0 1 3-3h6" />
+                  <path d="M44 11h6a3 3 0 0 1 3 3v6" />
+                  <path d="M11 44v6a3 3 0 0 0 3 3h6" />
+                  <path d="M44 53h6a3 3 0 0 0 3-3v-6" />
+                </g>
+                <path d="M19.5 19.5L44.5 44.5" stroke="url(#nav-rx-x1)" strokeWidth="6.5" strokeLinecap="round" />
+                <path d="M44.5 19.5L19.5 44.5" stroke="url(#nav-rx-x2)" strokeWidth="6.5" strokeLinecap="round" />
+                <line x1="7" y1="32" x2="57" y2="32" stroke="#10b981" strokeOpacity="0.38" strokeWidth="6" strokeLinecap="round" />
+                <line x1="8" y1="32" x2="56" y2="32" stroke="#6ee7b7" strokeWidth="2.6" strokeLinecap="round" />
+                <circle cx="32" cy="32" r="5.6" fill="#050b16" stroke="#34d399" strokeWidth="2.4" />
+                <circle cx="32" cy="32" r="2.3" fill="#ffffff" />
               </svg>
-            </div>
+            </a>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold tracking-tight text-lg text-white">RepoXray</span>

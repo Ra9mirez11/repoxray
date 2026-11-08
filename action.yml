@@ -2,8 +2,8 @@ name: 'RepoXray Security & Supply-Chain Gate'
 author: 'Ra9mirez11'
 description: 'Zero-dependency security, npm/PyPI CVEs, AI slopsquatting, .mcp.json/.env secret leak, and LLM context scanner.'
 branding:
-  icon: 'shield'
-  color: 'blue'
+  icon: 'crosshair'
+  color: 'green'
 
 inputs:
   target:

@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="https://raw.githubusercontent.com/Ra9mirez11/repoxray/main/public/logo.svg" width="72" height="72" alt="RepoXray Logo" />
+</p>
+
 # RepoXray (`rxray`)
 
 [![Web Scanner](https://img.shields.io/badge/Live_Scanner-repoxray.pages.dev-06b6d4?style=flat-square&labelColor=0f172a)](https://repoxray.pages.dev)

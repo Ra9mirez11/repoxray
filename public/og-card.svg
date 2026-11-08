@@ -8,14 +8,51 @@
       <stop offset="0%" stop-color="#22d3ee"/>
       <stop offset="100%" stop-color="#34d399"/>
     </linearGradient>
+    <linearGradient id="emblem-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#081226"/>
+      <stop offset="100%" stop-color="#040811"/>
+    </linearGradient>
+    <linearGradient id="emblem-x1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="emblem-x2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
   </defs>
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect x="48" y="48" width="1104" height="534" rx="28" fill="#090f1d" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Top Pill -->
   <rect x="88" y="92" width="380" height="36" rx="18" fill="#083344" stroke="#06b6d4"/>
   <text x="112" y="116" fill="#67e8f9" font-family="monospace" font-size="16" font-weight="700">100% CLIENT-SIDE  |  0 BYTES UPLOADED</text>
+
+  <!-- RepoXray Brand Emblem (Top Right) -->
+  <g transform="translate(932, 92) scale(1.3125)">
+    <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#emblem-bg)" stroke="url(#accent)" stroke-width="3"/>
+    <path d="M64 15V22M64 106V113" stroke="#38bdf8" stroke-opacity="0.35" stroke-width="2.5" stroke-linecap="round"/>
+    <g stroke="#38bdf8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M22 40V28a6 6 0 0 1 6-6h12"/>
+      <path d="M88 22h12a6 6 0 0 1 6 6v12"/>
+      <path d="M22 88v12a6 6 0 0 0 6 6h12"/>
+      <path d="M88 106h12a6 6 0 0 0 6-6V88"/>
+    </g>
+    <path d="M39 39L89 89" stroke="url(#emblem-x1)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M89 39L39 89" stroke="url(#emblem-x2)" stroke-width="12" stroke-linecap="round"/>
+    <line x1="14" y1="64" x2="114" y2="64" stroke="#10b981" stroke-opacity="0.34" stroke-width="11" stroke-linecap="round"/>
+    <line x1="16" y1="64" x2="112" y2="64" stroke="#6ee7b7" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="64" cy="64" r="10.5" fill="#050b16" stroke="#34d399" stroke-width="4"/>
+    <circle cx="64" cy="64" r="4.2" fill="#ffffff"/>
+  </g>
+
+  <!-- Headlines -->
   <text x="88" y="210" fill="#ffffff" font-family="system-ui, sans-serif" font-size="62" font-weight="800">RepoXray (npx rxray)</text>
   <text x="88" y="282" fill="url(#accent)" font-family="system-ui, sans-serif" font-size="38" font-weight="700">Catch Leaked Keys, Malware &amp; AI Hallucinations</text>
   <text x="88" y="348" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="25">OSV CVEs  •  0.0.1-security Tombstones  •  MCP Secrets  •  AGENTS.md &amp; .aiignore</text>
+
+  <!-- CLI & Score Footer -->
   <rect x="88" y="420" width="460" height="68" rx="14" fill="#04070d" stroke="#22d3ee"/>
   <text x="118" y="463" fill="#e2e8f0" font-family="monospace" font-size="26" font-weight="700">$ npx rxray . --write-shield</text>
   <rect x="900" y="420" width="200" height="68" rx="14" fill="#064e3b" stroke="#10b981"/>
