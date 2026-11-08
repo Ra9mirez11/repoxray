@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-08
+
+### Added
+- **Unpinned Git Install Detection in MCP & Manifests (`SC-MCP-UNPINNED-GIT` / `SC-UNPINNED-GIT-SPEC`):** Detects `npx github:owner/repo`, npm bare `owner/repo` shorthand, `npx git+https://...`, and `uvx --from git+https://...` (plus `package.json` and `requirements.txt` Git URLs) lacking an immutable 40/64-character commit SHA, while preventing Git specifiers from being falsely queried against npm/PyPI registries. *(Thanks again to @X1Y1 for follow-up telemetry from 10,659 public MCP configs).*
+- **Expanded MCP `env` Credential & SaaS Token Precision (`SEC-MCP-PLAINTEXT-ENV` / `SEC-SAAS-MCP-TOKEN`):** Added support for `mcp_config.json`, `cline_mcp_settings.json`, `roo_mcp_settings.json`, `.zed/settings.json`, Docker/CLI `-e KEY=VAL` args, and Notion/Linear/Tavily/Firecrawl/Perplexity/HuggingFace/Figma/GitLab/Supabase tokens, while eliminating false positives on benign `env` settings (`NODE_ENV`, paths, public URLs, `MAX_TOKENS`, `op://` / `${env:...}` references) and deduplicating same-line alerts.
+
 ## [0.3.1] - 2026-11-08
 
 ### Changed

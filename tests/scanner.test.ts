@@ -208,4 +208,109 @@ describe('RepoXray Core Engine', () => {
     expect(closingMatches).toHaveLength(1);
     expect(compiled.aiIgnore).toContain('\\!.env.min.js');
   });
+
+  it('flags unpinned npx/uvx Git MCP installs without misclassifying as registry 404, while allowing full 40-char commit SHAs', async () => {
+    const unpinnedGitRepo = [
+      {
+        path: '.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            ghUnpinned: {
+              command: 'npx',
+              args: ['-y', 'github:acme-corp/custom-mcp-server'],
+            },
+            uvxBranchRef: {
+              command: 'uvx',
+              args: ['--from', 'git+https://github.com/acme-corp/py-mcp.git@main', 'py-mcp'],
+            },
+          },
+        }),
+      },
+      { path: '.gitignore', content: '.env\n.env.*\n' },
+      { path: '.aiignore', content: '.env\n' },
+      { path: 'AGENTS.md', content: '# Rules\n' },
+    ];
+
+    const unpinnedReport = await runRepoXray(unpinnedGitRepo, { offline: true });
+    const unpinnedFindings = unpinnedReport.findings.filter(
+      (f) => f.ruleId === 'SC-MCP-UNPINNED-GIT',
+    );
+    expect(unpinnedFindings).toHaveLength(2);
+    // Must NOT push `github:...` or `"git"` into registry dependencies
+    expect(unpinnedReport.dependencies).toHaveLength(0);
+
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    const pinnedGitRepo = [
+      {
+        path: '.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            ghPinned: {
+              command: 'npx',
+              args: [`github:acme-corp/custom-mcp-server#${sha}`],
+            },
+            uvxPinned: {
+              command: 'uvx',
+              args: [
+                '--from',
+                `git+https://github.com/acme-corp/py-mcp.git@${sha}#subdirectory=srv`,
+                'py-mcp',
+              ],
+            },
+          },
+        }),
+      },
+      { path: '.gitignore', content: '.env\n.env.*\n' },
+      { path: '.aiignore', content: '.env\n' },
+      { path: 'AGENTS.md', content: '# Rules\n' },
+    ];
+
+    const pinnedReport = await runRepoXray(pinnedGitRepo, { offline: true });
+    expect(pinnedReport.findings).toHaveLength(0);
+    expect(pinnedReport.score).toBe(100);
+  });
+
+  it('precisely flags real tokens in MCP env blocks and CLI -e flags while ignoring benign config & dynamic env refs', async () => {
+    const synthNotion = ['ntn_', '9xK2mP7qR4tV8wY1zB3nC6dF0gH5jL8mQ2'].join('');
+    const synthBrave = ['BSA', '9xK2mP7qR4tV8wY1zB3nC6dF0gH5j'].join('');
+
+    const mcpEnvRepo = [
+      {
+        path: 'mcp_config.json',
+        content: JSON.stringify({
+          mcpServers: {
+            safeServer: {
+              command: 'node',
+              args: ['server.js'],
+              env: {
+                NODE_ENV: 'production',
+                LOG_LEVEL: 'development',
+                ALLOWED_DIR: '/Users/alice/workspace/project',
+                API_BASE_URL: 'https://api.github.com',
+                MAX_TOKENS: '8192',
+                GITHUB_TOKEN: '${env:GITHUB_TOKEN}',
+                OP_SECRET: 'op://Engineering/Prod/api_key',
+              },
+            },
+            leakyServer: {
+              command: 'docker',
+              args: ['run', '-i', '--rm', '-e', `NOTION_TOKEN=${synthNotion}`, 'mcp/notion'],
+              env: {
+                BRAVE: synthBrave,
+              },
+            },
+          },
+        }),
+      },
+      { path: '.gitignore', content: '.env\n.env.*\n' },
+      { path: '.aiignore', content: '.env\n' },
+      { path: 'AGENTS.md', content: '# Rules\n' },
+    ];
+
+    const report = await runRepoXray(mcpEnvRepo, { offline: true });
+    const mcpEnvFindings = report.findings.filter((f) => f.ruleId === 'SEC-MCP-PLAINTEXT-ENV');
+    expect(mcpEnvFindings).toHaveLength(2);
+    // Ensure deduplication: no extra duplicate SEC-SAAS-MCP-TOKEN emitted for the same NOTION_TOKEN
+    expect(report.findings).toHaveLength(2);
+  });
 });

@@ -1,4 +1,4 @@
-import { isMcpConfigPath, parseMcpConfigContent } from './mcpParser';
+import { isMcpConfigPath, parseGitInstallSpec, parseMcpConfigContent } from './mcpParser';
 import type {
   DependencyRecord,
   Ecosystem,
@@ -200,14 +200,38 @@ export function extractDependencies(files: VirtualFile[]): {
 
           for (const [depName, rawSpec] of Object.entries(block)) {
             const spec = String(rawSpec ?? '').trim();
-            if (spec.startsWith('workspace:')) continue;
+            if (spec.startsWith('workspace:') || spec.startsWith('file:') || spec.startsWith('link:')) {
+              continue;
+            }
+
+            const gitSpec = parseGitInstallSpec(spec, 'npm');
+            if (gitSpec) {
+              if (!gitSpec.isCommitShaPinned || gitSpec.isInsecureTransport) {
+                scriptFindings.push({
+                  id: `sc-git-${seq++}`,
+                  ruleId: 'SC-UNPINNED-GIT-SPEC',
+                  category: 'supply-chain',
+                  severity: gitSpec.isInsecureTransport ? 'critical' : 'high',
+                  title: `Unpinned Git Dependency "${depName}"${
+                    gitSpec.commitRef ? ` (Mutable Ref "${gitSpec.commitRef}")` : ' (Floating HEAD)'
+                  }`,
+                  description: `Dependency "${depName}" pulls directly from Git ("${spec}") without an immutable 40-character commit SHA${
+                    gitSpec.isInsecureTransport ? ' and uses unencrypted transport' : ''
+                  }. Registry malware checks skip Git URLs, and force-pushes to branches or tags can inject arbitrary code.`,
+                  file: file.path,
+                  evidence: `"${depName}": "${spec}"`,
+                  remediation:
+                    'Pin an exact 40-character commit SHA over HTTPS (e.g. `github:owner/repo#<40-char-sha>`) or migrate to a version-pinned registry release.',
+                });
+              }
+              continue;
+            }
 
             if (
               spec === '*' ||
               spec.toLowerCase() === 'latest' ||
               spec.startsWith('http://') ||
-              spec.startsWith('https://') ||
-              spec.startsWith('git+')
+              spec.startsWith('https://')
             ) {
               scriptFindings.push({
                 id: `sc-unpinned-${seq++}`,
@@ -221,6 +245,9 @@ export function extractDependencies(files: VirtualFile[]): {
                 remediation:
                   'Pin exact semantic version (e.g. `1.2.3`) and commit a deterministic lockfile.',
               });
+              if (spec.startsWith('http://') || spec.startsWith('https://')) {
+                continue;
+              }
             }
 
             scriptFindings.push(
@@ -242,10 +269,34 @@ export function extractDependencies(files: VirtualFile[]): {
       }
     }
 
-    // 2. MCP server configurations (.mcp.json, claude_desktop_config.json)
+    // 2. MCP server configurations (.mcp.json, claude_desktop_config.json, mcp_config.json, etc.)
     if (isMcpConfigPath(file.path)) {
       const servers = parseMcpConfigContent(file.content);
       for (const srv of servers) {
+        if (srv.extractedGitInstall) {
+          const git = srv.extractedGitInstall;
+          if (!git.isCommitShaPinned || git.isInsecureTransport) {
+            scriptFindings.push({
+              id: `sc-mcp-git-${seq++}`,
+              ruleId: 'SC-MCP-UNPINNED-GIT',
+              category: 'supply-chain',
+              severity: git.isInsecureTransport ? 'critical' : 'high',
+              title: `Unpinned Git Install in MCP Server "${srv.serverName}"`,
+              description: `MCP server "${srv.serverName}" executes "${git.rawSpec}" directly from a Git repository ${
+                git.commitRef
+                  ? `using mutable ref "${git.commitRef}"`
+                  : 'with no commit SHA (floating HEAD)'
+              }. Registry checks skip Git URLs, so any upstream force-push or branch/tag compromise executes arbitrary code on IDE startup.`,
+              file: file.path,
+              evidence: srv.rawCommandDisplay,
+              remediation:
+                git.ecosystem === 'PyPI'
+                  ? 'Pin an immutable 40-character commit SHA (`uvx --from git+https://github.com/owner/repo@<40-char-sha> ...`) after auditing that commit.'
+                  : 'Pin an immutable 40-character commit SHA (`npx github:owner/repo#<40-char-sha>`) after auditing that commit.',
+            });
+          }
+        }
+
         if (!srv.extractedPackage) continue;
         const { name, versionSpec, ecosystem } = srv.extractedPackage;
         scriptFindings.push(
@@ -268,6 +319,30 @@ export function extractDependencies(files: VirtualFile[]): {
       for (const rawLine of lines) {
         const line = rawLine.split('#')[0].trim();
         if (!line || line.startsWith('-')) continue;
+
+        const pep508DirectMatch = line.match(/^([A-Za-z0-9_.-]+)\s*@\s*(\S+)$/);
+        const candidateGitToken = pep508DirectMatch ? pep508DirectMatch[2] : line;
+        const pyGit = parseGitInstallSpec(candidateGitToken, 'PyPI');
+        if (pyGit) {
+          if (!pyGit.isCommitShaPinned || pyGit.isInsecureTransport) {
+            scriptFindings.push({
+              id: `sc-py-git-${seq++}`,
+              ruleId: 'SC-UNPINNED-GIT-SPEC',
+              category: 'supply-chain',
+              severity: pyGit.isInsecureTransport ? 'critical' : 'high',
+              title: `Unpinned Git Dependency in ${baseName}${
+                pyGit.commitRef ? ` (Mutable Ref "${pyGit.commitRef}")` : ' (Floating HEAD)'
+              }`,
+              description: `Python dependency "${line}" installs directly from Git without an immutable 40-character commit SHA, bypassing PyPI/OSV checks.`,
+              file: file.path,
+              evidence: line.slice(0, 120),
+              remediation:
+                'Pin an exact 40-character commit SHA (`git+https://github.com/owner/repo.git@<40-char-sha>`).',
+            });
+          }
+          continue;
+        }
+
         const match = line.match(/^([A-Za-z0-9_.-]+)\s*(.*)$/);
         if (!match) continue;
         const [, name, spec] = match;

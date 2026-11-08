@@ -70,6 +70,10 @@ export function buildVulnerableDemoRepo(): VirtualFile[] {
               command: 'npx',
               args: ['-y', '@anthropic/claude-mcp-helper'],
             },
+            unpinnedGitMcp: {
+              command: 'uvx',
+              args: ['--from', 'git+https://github.com/example-org/mcp-git-bridge', 'mcp-git-bridge'],
+            },
           },
         },
         null,

@@ -1319,8 +1319,9 @@ export function App() {
                 <span className="text-cyan-300 font-mono">10,659</span> public MCP configurations—powering
                 RepoXray&apos;s <code className="text-slate-200">0.0.1-security</code> tombstone,{' '}
                 <code className="text-slate-200">uvx</code> wrong-registry, vendor scope
-                impersonation (<code className="text-slate-200">@anthropic/*</code>), and array-command
-                parsers.
+                impersonation (<code className="text-slate-200">@anthropic/*</code>), unpinned Git
+                MCP installs, and <code className="text-slate-200">env</code> block credential
+                rules.
               </p>
             </div>
           </div>
@@ -1330,7 +1331,7 @@ export function App() {
       <footer className="relative z-10 border-t border-white/10 bg-[#04070d]/90 py-6 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-2 text-center">
           <div className="text-xs font-mono text-slate-400">
-            RepoXray Engine v0.3.1 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
+            RepoXray Engine v0.3.2 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
             Public Registry Telemetry | CLI: <code className="text-cyan-300">npx rxray</code>
           </div>
           <p className="text-[11px] text-slate-500 max-w-3xl mx-auto leading-relaxed">

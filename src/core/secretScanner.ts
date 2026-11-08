@@ -34,10 +34,21 @@ const PLACEHOLDER_HINTS = [
   '0000000000',
   'replace_me',
   '<your',
+  'insert_',
+  'todo_',
   'process.env',
   'os.environ',
   'import.meta.env',
 ];
+
+const SENSITIVE_MCP_ENV_KEY_RE =
+  /(?:key|token|secret|password|passwd|pwd|auth|pat|credential|bearer|cookie|session|dsn|conn|webhook|private|cert|jwt)/i;
+
+const NON_SECRET_TOKEN_COUNT_KEY_RE =
+  /^(?:max_?tokens?|min_?tokens?|token_?limit|context_?tokens?|output_?tokens?|public_?url)$/i;
+
+const BENIGN_ENUM_ENV_VAL_RE =
+  /^(?:true|false|yes|no|development|production|staging|local|test|testing|debug|info|warn|warning|error|trace|silent|utf-?8|ascii|json|text|stdio|sse|http|https|localhost)$/i;
 
 export function calculateEntropy(input: string): number {
   if (!input || input.length === 0) return 0;
@@ -64,7 +75,42 @@ export function redactSecret(raw: string): string {
 
 function isLikelyPlaceholder(value: string): boolean {
   const lower = value.toLowerCase();
+  if (/^<[^>]+>$/.test(lower)) return true;
   return PLACEHOLDER_HINTS.some((hint) => lower.includes(hint));
+}
+
+function isDynamicSecretReference(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  if (v.startsWith('${') || /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(v)) return true;
+  if (/^%[A-Za-z_][A-Za-z0-9_]*%$/.test(v)) return true;
+  if (/^\{\{\s*[A-Za-z0-9_.:-]+\s*\}\}$/.test(v)) return true;
+  if (/^(?:op|vault|aws-ssm|gcp-sm|azure-kv|keychain):\/\//i.test(v)) return true;
+  return false;
+}
+
+function isPlainFilesystemPathOrPublicUrl(value: string): boolean {
+  const v = value.trim();
+  if (
+    v.startsWith('/') ||
+    v.startsWith('./') ||
+    v.startsWith('../') ||
+    v.startsWith('~/') ||
+    /^[A-Za-z]:[/\\]/.test(v)
+  ) {
+    return true;
+  }
+
+  if (/^https?:\/\//i.test(v)) {
+    // Embedded user:pass@ credentials or webhook endpoints ARE sensitive
+    const hasEmbeddedCreds = /^https?:\/\/[^/\s:@]+:[^/\s@]+@/i.test(v);
+    const isWebhookUrl = /(?:hooks\.slack\.com|discord(?:app)?\.com\/api\/webhooks|webhook)/i.test(
+      v,
+    );
+    return !hasEmbeddedCreds && !isWebhookUrl;
+  }
+
+  return false;
 }
 
 const SECRET_RULES: SecretRule[] = [
@@ -86,12 +132,25 @@ const SECRET_RULES: SecretRule[] = [
   },
   {
     ruleId: 'SEC-AI-API-KEY',
-    title: 'Hardcoded AI Provider API Key (OpenAI / Anthropic)',
+    title: 'Hardcoded AI Provider API Key (OpenAI / Anthropic / Perplexity / HuggingFace)',
     severity: 'critical',
-    pattern: new RegExp('\\b(sk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{28,200})\\b'),
+    pattern: new RegExp(
+      '\\b(sk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{28,200}|pplx-[A-Za-z0-9]{32,128}|hf_[A-Za-z0-9]{30,128})\\b',
+    ),
     minEntropy: 3.6,
     remediation:
       'Rotate the API key in your provider dashboard and reference it exclusively via server-side environment variables.',
+  },
+  {
+    ruleId: 'SEC-SAAS-MCP-TOKEN',
+    title: 'Hardcoded SaaS / MCP Service Token (Notion / Linear / Tavily / GitLab / Figma / npm)',
+    severity: 'critical',
+    pattern: new RegExp(
+      '\\b(ntn_[A-Za-z0-9]{30,120}|lin_api_[A-Za-z0-9]{28,120}|tvly-[A-Za-z0-9_-]{24,120}|fc-[a-f0-9]{28,64}|glpat-[A-Za-z0-9_-]{20,100}|figd_[A-Za-z0-9_-]{28,120}|sbp_[a-f0-9]{32,80}|npm_[A-Za-z0-9]{32,80})\\b',
+    ),
+    minEntropy: 3.5,
+    remediation:
+      'Revoke the exposed service token in the vendor dashboard and inject it at runtime via OS environment variables.',
   },
   {
     ruleId: 'SEC-GOOGLE-API-KEY',
@@ -151,6 +210,44 @@ const SECRET_RULES: SecretRule[] = [
       'Replace hardcoded secret string literal with process.env.<VARIABLE_NAME> or equivalent runtime secret injection.',
   },
 ];
+
+function matchesKnownSecretSignature(value: string): boolean {
+  for (const rule of SECRET_RULES) {
+    if (rule.ruleId === 'SEC-GENERIC-HIGH-ENTROPY') continue;
+    const m = rule.pattern.exec(value);
+    if (!m) continue;
+    const candidate = rule.ruleId === 'SEC-AWS-KEY' ? m[0] : (m[1] ?? m[0]);
+    if (isLikelyPlaceholder(candidate)) continue;
+    if (rule.minEntropy !== undefined && calculateEntropy(candidate) < rule.minEntropy) continue;
+    return true;
+  }
+  return false;
+}
+
+function shouldFlagMcpEnvEntry(envKey: string, rawVal: string): boolean {
+  const val = rawVal.trim();
+  if (val.length < 8) return false;
+  if (isDynamicSecretReference(val) || isLikelyPlaceholder(val)) return false;
+  if (BENIGN_ENUM_ENV_VAL_RE.test(val) || /^\d+(?:\.\d+)?$/.test(val)) return false;
+
+  // 1. Known provider token / DB URI / private key prefix in value -> always flag regardless of key name
+  if (matchesKnownSecretSignature(val)) return true;
+
+  // 2. Skip non-secret local paths and public base URLs
+  if (isPlainFilesystemPathOrPublicUrl(val)) return false;
+
+  // 3. Sensitive credential key name (`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, etc.)
+  if (SENSITIVE_MCP_ENV_KEY_RE.test(envKey) && !NON_SECRET_TOKEN_COUNT_KEY_RE.test(envKey)) {
+    return true;
+  }
+
+  // 4. Arbitrary env key name holding a high-entropy single-token secret (e.g. `"BRAVE": "BSA..."`)
+  if (!/\s/.test(val) && val.length >= 20 && calculateEntropy(val) >= 3.85) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Redacts any inline secret tokens matched by SECRET_RULES inside an arbitrary code snippet
@@ -254,7 +351,7 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
         const eqIdx = line.indexOf('=');
         if (eqIdx > 0) {
           const val = line.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
-          if (val.length >= 8 && !isLikelyPlaceholder(val)) {
+          if (val.length >= 8 && !isLikelyPlaceholder(val) && !isDynamicSecretReference(val)) {
             if (populatedSecretCount === 0) firstSecretLine = i + 1;
             populatedSecretCount++;
           }
@@ -285,7 +382,10 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
       });
     }
 
-    // 2b. Check MCP server config security (.mcp.json, claude_desktop_config.json)
+    // Track literals already reported by structured MCP `env` inspection to prevent duplicate alerts on the same line
+    const reportedMcpEnvLiterals = new Set<string>();
+
+    // 2b. Check MCP server config security (.mcp.json, claude_desktop_config.json, mcp_config.json, etc.)
     if (isMcpConfigPath(file.path)) {
       const mcpServers = parseMcpConfigContent(file.content);
       for (const srv of mcpServers) {
@@ -306,12 +406,8 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
         }
 
         for (const [envKey, strVal] of Object.entries(srv.env)) {
-          if (
-            strVal.length >= 10 &&
-            !strVal.startsWith('${') &&
-            !strVal.startsWith('$') &&
-            !isLikelyPlaceholder(strVal)
-          ) {
+          if (shouldFlagMcpEnvEntry(envKey, strVal)) {
+            reportedMcpEnvLiterals.add(strVal.trim());
             const safeEnvKey = envKey.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 64);
             findings.push({
               id: `sec-${seq++}`,
@@ -320,10 +416,10 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
               severity: 'critical',
               title: `Plaintext Credential "${safeEnvKey}" in MCP Config (${srv.serverName})`,
               description:
-                'MCP configuration stores a literal credential in plaintext JSON instead of an environment variable reference.',
+                'MCP configuration stores a literal credential inside its `env` block (or CLI `-e` flag) instead of an environment variable reference.',
               file: file.path,
               evidence: `${safeEnvKey}=${redactSecret(strVal)}`,
-              remediation: `Replace literal value with "\${${safeEnvKey}}" or load from OS secret store.`,
+              remediation: `Replace literal value with "\${${safeEnvKey}}" (or "\${env:${safeEnvKey}}") and inject from OS secret store.`,
             });
           }
         }
@@ -344,6 +440,9 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
         const candidate =
           rule.ruleId === 'SEC-AWS-KEY' ? match[0] : (match[1] ?? match[0]);
         if (isLikelyPlaceholder(candidate)) continue;
+        if (reportedMcpEnvLiterals.has(candidate) || Array.from(reportedMcpEnvLiterals).some((lit) => lit.includes(candidate))) {
+          continue;
+        }
 
         if (rule.minEntropy !== undefined) {
           const ent = calculateEntropy(candidate);
