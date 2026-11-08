@@ -1,3 +1,4 @@
+import { isMcpConfigPath, parseMcpConfigContent } from './mcpParser';
 import type { Finding, Severity, VirtualFile } from './types';
 
 interface SecretRule {
@@ -151,16 +152,6 @@ const SECRET_RULES: SecretRule[] = [
   },
 ];
 
-function isMcpConfigFile(path: string): boolean {
-  const lower = path.toLowerCase();
-  return (
-    lower.endsWith('.mcp.json') ||
-    lower.endsWith('/mcp.json') ||
-    lower === 'mcp.json' ||
-    lower.endsWith('claude_desktop_config.json')
-  );
-}
-
 function isEnvFile(path: string): boolean {
   const base = path.split('/').pop() ?? path;
   if (!base.startsWith('.env')) return false;
@@ -259,65 +250,46 @@ export function scanSecretsAndExposure(files: VirtualFile[]): Finding[] {
     }
 
     // 2b. Check MCP server config security (.mcp.json, claude_desktop_config.json)
-    if (isMcpConfigFile(file.path)) {
-      try {
-        const parsed = JSON.parse(file.content) as Record<string, unknown>;
-        const servers = (parsed.mcpServers ?? parsed.servers) as
-          | Record<string, Record<string, unknown>>
-          | undefined;
-        if (servers && typeof servers === 'object') {
-          for (const [serverName, cfg] of Object.entries(servers)) {
-            const cmd = String(cfg?.command ?? '');
-            const args = Array.isArray(cfg?.args) ? cfg.args.map(String) : [];
-            if (
-              cmd === 'npx' &&
-              args.includes('-y') &&
-              args.some((a) => !a.startsWith('-') && !/@\d+\.\d+\.\d+/.test(a))
-            ) {
-              findings.push({
-                id: `sec-${seq++}`,
-                ruleId: 'SEC-MCP-UNPINNED-NPX',
-                category: 'supply-chain',
-                severity: 'high',
-                title: `Unpinned 'npx -y' Execution in MCP Server "${serverName}"`,
-                description:
-                  'Auto-installing latest unpinned npm package via `npx -y` inside MCP configuration executes arbitrary remote code on every IDE startup.',
-                file: file.path,
-                evidence: `${cmd} ${args.join(' ')}`.slice(0, 90),
-                remediation:
-                  'Pin the exact verified package version (e.g. `pkg@1.2.3`) and remove `-y` or install locally with lockfile verification.',
-              });
-            }
+    if (isMcpConfigPath(file.path)) {
+      const mcpServers = parseMcpConfigContent(file.content);
+      for (const srv of mcpServers) {
+        if (srv.extractedPackage?.isUnpinnedAutoInstall && srv.extractedPackage.ecosystem === 'npm') {
+          findings.push({
+            id: `sec-${seq++}`,
+            ruleId: 'SEC-MCP-UNPINNED-NPX',
+            category: 'supply-chain',
+            severity: 'high',
+            title: `Unpinned '${srv.runner}' Auto-Install in MCP Server "${srv.serverName}"`,
+            description:
+              'Auto-installing latest unpinned npm package inside MCP configuration executes arbitrary remote code on every IDE startup.',
+            file: file.path,
+            evidence: srv.rawCommandDisplay,
+            remediation:
+              'Pin the exact verified package version (e.g. `pkg@1.2.3`) or install locally with lockfile verification.',
+          });
+        }
 
-            const envObj = cfg?.env as Record<string, unknown> | undefined;
-            if (envObj && typeof envObj === 'object') {
-              for (const [envKey, envVal] of Object.entries(envObj)) {
-                const strVal = String(envVal ?? '');
-                if (
-                  strVal.length >= 10 &&
-                  !strVal.startsWith('${') &&
-                  !strVal.startsWith('$') &&
-                  !isLikelyPlaceholder(strVal)
-                ) {
-                  findings.push({
-                    id: `sec-${seq++}`,
-                    ruleId: 'SEC-MCP-PLAINTEXT-ENV',
-                    category: 'secrets',
-                    severity: 'critical',
-                    title: `Plaintext Credential "${envKey}" in MCP Config (${serverName})`,
-                    description:
-                      'MCP configuration stores a literal credential in plaintext JSON instead of an environment variable reference.',
-                    file: file.path,
-                    evidence: `${envKey}=${redactSecret(strVal)}`,
-                    remediation: `Replace literal value with "\${${envKey}}" or load from OS secret store.`,
-                  });
-                }
-              }
-            }
+        for (const [envKey, strVal] of Object.entries(srv.env)) {
+          if (
+            strVal.length >= 10 &&
+            !strVal.startsWith('${') &&
+            !strVal.startsWith('$') &&
+            !isLikelyPlaceholder(strVal)
+          ) {
+            findings.push({
+              id: `sec-${seq++}`,
+              ruleId: 'SEC-MCP-PLAINTEXT-ENV',
+              category: 'secrets',
+              severity: 'critical',
+              title: `Plaintext Credential "${envKey}" in MCP Config (${srv.serverName})`,
+              description:
+                'MCP configuration stores a literal credential in plaintext JSON instead of an environment variable reference.',
+              file: file.path,
+              evidence: `${envKey}=${redactSecret(strVal)}`,
+              remediation: `Replace literal value with "\${${envKey}}" or load from OS secret store.`,
+            });
           }
         }
-      } catch {
-        // Ignore malformed JSON in MCP check
       }
     }
 

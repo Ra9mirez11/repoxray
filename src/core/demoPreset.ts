@@ -61,11 +61,14 @@ export function buildVulnerableDemoRepo(): VirtualFile[] {
         {
           mcpServers: {
             githubTools: {
-              command: 'npx',
-              args: ['-y', '@community-mcp/unverified-git-helper'],
+              command: ['npx', '-y', 'mcp-server-fetch'],
               env: {
                 GITHUB_PERSONAL_ACCESS_TOKEN: synthGh,
               },
+            },
+            confusedVendor: {
+              command: 'npx',
+              args: ['-y', '@anthropic/claude-mcp-helper'],
             },
           },
         },

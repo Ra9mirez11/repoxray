@@ -106,4 +106,58 @@ describe('RepoXray Core Engine', () => {
     expect(report.dependencies[0]?.resolvedVersion).toBe('6.4.5');
     expect(report.score).toBe(100);
   });
+
+  it('handles array command in MCP configs and flags wrong-registry & vendor scope impersonation', async () => {
+    const mcpRepo = [
+      {
+        path: '.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            fetchSrv: {
+              command: ['npx', '-y', '@modelcontextprotocol/server-fetch'],
+            },
+            wrongScope: {
+              command: 'npx',
+              args: ['-y', '@anthropic/mcp-connector'],
+            },
+          },
+        }),
+      },
+      { path: '.gitignore', content: '.env\n.env.*\n' },
+      { path: '.aiignore', content: '.env\n' },
+      { path: 'AGENTS.md', content: '# Rules\n' },
+    ];
+
+    const report = await runRepoXray(mcpRepo, { offline: true });
+    const ruleIds = new Set(report.findings.map((f) => f.ruleId));
+
+    expect(ruleIds.has('SEC-MCP-UNPINNED-NPX')).toBe(true);
+    expect(ruleIds.has('SC-MCP-WRONG-REGISTRY')).toBe(true);
+    expect(ruleIds.has('SC-SCOPE-IMPERSONATION-RISK')).toBe(true);
+    expect(report.dependencies.map((d) => d.name)).toContain(
+      '@modelcontextprotocol/server-fetch',
+    );
+  });
+
+  it('detects live npm 0.0.1-security malware holding placeholders distinctly from 404', async () => {
+    const tombstoneRepo = [
+      {
+        path: '.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            fetchMalwareSlot: {
+              command: ['npx', 'mcp-server-fetch@0.0.1-security'],
+            },
+          },
+        }),
+      },
+      { path: '.gitignore', content: '.env\n.env.*\n' },
+      { path: '.aiignore', content: '.env\n' },
+      { path: 'AGENTS.md', content: '# Rules\n' },
+    ];
+
+    const report = await runRepoXray(tombstoneRepo, { offline: false });
+    const ruleIds = new Set(report.findings.map((f) => f.ruleId));
+    expect(ruleIds.has('SC-NPM-SECURITY-TOMBSTONE')).toBe(true);
+  });
 });

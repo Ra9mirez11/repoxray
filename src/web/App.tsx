@@ -1078,7 +1078,7 @@ export function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 py-5 mt-12 text-center text-xs font-mono text-slate-500">
-        RepoXray Engine v0.1.0 — 100% Client-Side Execution | Powered by OSV.dev &amp; Public
+        RepoXray Engine v0.2.0 — 100% Client-Side Execution | Powered by OSV.dev &amp; Public
         Registry Telemetry | CLI: npx rxray
       </footer>
     </div>

@@ -1,3 +1,4 @@
+import { isMcpConfigPath, parseMcpConfigContent } from './mcpParser';
 import type {
   DependencyRecord,
   Ecosystem,
@@ -11,10 +12,114 @@ const RISKY_LIFECYCLE_HOOKS = ['preinstall', 'install', 'postinstall', 'preunins
 const SUSPICIOUS_SCRIPT_RE =
   /\b(curl|wget|invoke-webrequest|iwr|powershell|pwsh|bash\s+-c|sh\s+-c|eval|base64|nc\s+|netcat|node\s+-e|python\s+-c|https?:\/\/)/i;
 
+/**
+ * Official MCP reference servers that are Python-only (`uvx mcp-server-<name>` on PyPI)
+ * and DO NOT exist as `@modelcontextprotocol/server-<name>` on npm (or whose unscoped
+ * `mcp-server-<name>` npm slots were historically targeted by malware).
+ */
+const PYTHON_ONLY_MCP_SERVERS = new Set(['fetch', 'git', 'sqlite', 'time', 'sentry']);
+
+/**
+ * Commonly hallucinated / third-party-owned npm scopes vs. the actual vendor's official scope.
+ */
+const CONFUSED_VENDOR_SCOPES: Record<string, { vendor: string; officialScope: string }> = {
+  '@anthropic': { vendor: 'Anthropic', officialScope: '@anthropic-ai' },
+  '@claude': { vendor: 'Anthropic', officialScope: '@anthropic-ai' },
+  '@mcp': { vendor: 'Model Context Protocol', officialScope: '@modelcontextprotocol' },
+  '@modelcontext': { vendor: 'Model Context Protocol', officialScope: '@modelcontextprotocol' },
+  '@open-ai': { vendor: 'OpenAI', officialScope: '@openai' },
+  '@google-ai': { vendor: 'Google', officialScope: '@google' },
+  '@langchainjs': { vendor: 'LangChain', officialScope: '@langchain' },
+};
+
+/**
+ * Verified vendor-controlled npm scopes where external attackers cannot register arbitrary
+ * missing package names (a 404 here is a broken hallucinated name rather than an open public takeover slot).
+ */
+const VERIFIED_VENDOR_SCOPES = new Set([
+  '@modelcontextprotocol',
+  '@anthropic-ai',
+  '@openai',
+  '@google',
+  '@google-cloud',
+  '@cloudflare',
+  '@vercel',
+  '@supabase',
+  '@langchain',
+  '@octokit',
+  '@aws-sdk',
+  '@azure',
+  '@stripe',
+  '@prisma',
+  '@sentry',
+  '@vitejs',
+  '@tailwindcss',
+  '@types',
+]);
+
 export function cleanSemver(spec: string): string {
   const trimmed = spec.trim();
   const match = trimmed.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/);
   return match ? match[1] : '';
+}
+
+function getNpmScope(pkgName: string): string | null {
+  if (!pkgName.startsWith('@')) return null;
+  const slashIdx = pkgName.indexOf('/');
+  return slashIdx > 1 ? pkgName.slice(0, slashIdx).toLowerCase() : null;
+}
+
+function checkStaticNamingTraps(
+  depName: string,
+  ecosystem: Ecosystem,
+  manifestPath: string,
+  nextId: () => string,
+): Finding[] {
+  const out: Finding[] = [];
+  if (ecosystem !== 'npm') return out;
+
+  const lower = depName.toLowerCase();
+
+  // Rule: Wrong registry for Python-only official MCP servers
+  const scopedMcpMatch = lower.match(/^@modelcontextprotocol\/server-([a-z0-9-]+)$/);
+  const unscopedMcpMatch = lower.match(/^mcp-server-([a-z0-9-]+)$/);
+  const pyServerName = scopedMcpMatch?.[1] ?? unscopedMcpMatch?.[1];
+
+  if (pyServerName && PYTHON_ONLY_MCP_SERVERS.has(pyServerName)) {
+    const pyPkg = `mcp-server-${pyServerName}`;
+    out.push({
+      id: nextId(),
+      ruleId: 'SC-MCP-WRONG-REGISTRY',
+      category: 'supply-chain',
+      severity: unscopedMcpMatch ? 'critical' : 'high',
+      title: `Wrong Registry for Official MCP "${pyServerName}" Server (${depName} on npm)`,
+      description: unscopedMcpMatch
+        ? `"${depName}" is being resolved from npm instead of PyPI. Unscoped "${depName}" on npm is NOT the official MCP server (several unscoped mcp-server-* npm names had confirmed malware advisories). The official "${pyServerName}" server is a Python package run via \`uvx ${pyPkg}\`.`
+        : `"${depName}" does not exist on npm because the official MCP "${pyServerName}" server is published exclusively as a Python package on PyPI (\`${pyPkg}\`).`,
+      file: manifestPath,
+      evidence: depName,
+      remediation: `Switch runner from \`npx\` to \`uvx ${pyPkg}\` (from PyPI) and remove the npm reference.`,
+    });
+  }
+
+  // Rule: Vendor scope confusion / non-vendor scope ownership
+  const scope = getNpmScope(lower);
+  if (scope && CONFUSED_VENDOR_SCOPES[scope]) {
+    const info = CONFUSED_VENDOR_SCOPES[scope];
+    out.push({
+      id: nextId(),
+      ruleId: 'SC-SCOPE-IMPERSONATION-RISK',
+      category: 'supply-chain',
+      severity: 'critical',
+      title: `Non-Vendor Scope "${scope}" Referenced Instead of Official "${info.officialScope}"`,
+      description: `Package "${depName}" uses npm scope "${scope}", which is NOT owned by ${info.vendor} (official scope: "${info.officialScope}"). Whoever controls "${scope}" on npm can publish malicious code under "${depName}".`,
+      file: manifestPath,
+      evidence: depName,
+      remediation: `Replace scope "${scope}" with ${info.vendor}'s verified scope "${info.officialScope}" and verify the exact package name.`,
+    });
+  }
+
+  return out;
 }
 
 export function extractDependencies(files: VirtualFile[]): {
@@ -24,6 +129,7 @@ export function extractDependencies(files: VirtualFile[]): {
   const dependencies: DependencyRecord[] = [];
   const scriptFindings: Finding[] = [];
   let seq = 1;
+  const nextFindingId = () => `sc-static-${seq++}`;
 
   // Map exact locked versions from root package-lock.json when available
   const npmLockedVersions = new Map<string, string>();
@@ -117,6 +223,10 @@ export function extractDependencies(files: VirtualFile[]): {
               });
             }
 
+            scriptFindings.push(
+              ...checkStaticNamingTraps(depName, 'npm', file.path, nextFindingId),
+            );
+
             dependencies.push({
               name: depName,
               versionSpec: spec,
@@ -132,7 +242,27 @@ export function extractDependencies(files: VirtualFile[]): {
       }
     }
 
-    // 2. requirements.txt (PyPI)
+    // 2. MCP server configurations (.mcp.json, claude_desktop_config.json)
+    if (isMcpConfigPath(file.path)) {
+      const servers = parseMcpConfigContent(file.content);
+      for (const srv of servers) {
+        if (!srv.extractedPackage) continue;
+        const { name, versionSpec, ecosystem } = srv.extractedPackage;
+        scriptFindings.push(
+          ...checkStaticNamingTraps(name, ecosystem, file.path, nextFindingId),
+        );
+        dependencies.push({
+          name,
+          versionSpec,
+          resolvedVersion: cleanSemver(versionSpec),
+          ecosystem,
+          manifestPath: file.path,
+          isDev: false,
+        });
+      }
+    }
+
+    // 3. requirements.txt (PyPI)
     if (baseName === 'requirements.txt' || baseName.endsWith('-requirements.txt')) {
       const lines = file.content.split(/\r?\n/);
       for (const rawLine of lines) {
@@ -152,7 +282,7 @@ export function extractDependencies(files: VirtualFile[]): {
       }
     }
 
-    // 3. Cargo.toml (Rust crates.io)
+    // 4. Cargo.toml (Rust crates.io)
     if (baseName === 'Cargo.toml') {
       let inDeps = false;
       let isDevSection = false;
@@ -302,8 +432,10 @@ export async function auditSupplyChainLive(
     }
   }
 
-  // 2. Inspect npm packages on registry.npmjs.org for Slopsquatting (404 / young age) & hidden install scripts
-  // Prioritize runtime dependencies first, cap at 35 unique packages for sub-second speed
+  // 2. Inspect npm packages on registry.npmjs.org for:
+  //    - 0.0.1-security malware tombstones
+  //    - 404 Slopsquatting (differentiating vendor-controlled scopes vs open/third-party takeover slots)
+  //    - Newly created packages (<21 days) & hidden install scripts
   const uniqueNpmDeps: DependencyRecord[] = [];
   const seenNpm = new Set<string>();
   const sortedNpm = [...dependencies]
@@ -315,7 +447,7 @@ export async function auditSupplyChainLive(
       seenNpm.add(d.name);
       uniqueNpmDeps.push(d);
     }
-    if (uniqueNpmDeps.length >= 35) break;
+    if (uniqueNpmDeps.length >= 40) break;
   }
 
   const concurrency = 7;
@@ -343,30 +475,81 @@ export async function auditSupplyChainLive(
 
         if (res.status === 404) {
           if (record) record.existsInRegistry = false;
-          findings.push({
-            id: `sc-slop-${seq++}`,
-            ruleId: 'SC-SLOPSQUATTING-404',
-            category: 'supply-chain',
-            severity: 'critical',
-            title: `Unregistered / Hallucinated Package "${dep.name}" (Slopsquatting Risk)`,
-            description: `Package "${dep.name}" returns 404 on registry.npmjs.org. AI models frequently hallucinate plausible package names; an attacker can register this name on npm and execute arbitrary code on anyone installing this repo.`,
-            file: dep.manifestPath,
-            evidence: `"${dep.name}": "${dep.versionSpec}"`,
-            remediation: `Remove "${dep.name}" immediately and replace with the verified official package name.`,
-          });
+          const scope = getNpmScope(dep.name);
+          const isVendorOwnedScope = scope !== null && VERIFIED_VENDOR_SCOPES.has(scope);
+
+          if (isVendorOwnedScope) {
+            findings.push({
+              id: `sc-vendor-404-${seq++}`,
+              ruleId: 'SC-HALLUCINATED-VENDOR-PKG',
+              category: 'supply-chain',
+              severity: 'high',
+              title: `Non-Existent Package "${dep.name}" Inside Verified Vendor Scope "${scope}"`,
+              description: `"${dep.name}" returns 404 on npm. Because "${scope}" is controlled by the official vendor, external attackers cannot register this slot, but the package name is hallucinated or published in another registry (e.g. PyPI/uvx).`,
+              file: dep.manifestPath,
+              evidence: `"${dep.name}": "${dep.versionSpec}"`,
+              remediation: `Verify the official package name or registry under "${scope}" and remove the nonexistent reference.`,
+            });
+          } else {
+            findings.push({
+              id: `sc-slop-${seq++}`,
+              ruleId: 'SC-SLOPSQUATTING-404',
+              category: 'supply-chain',
+              severity: 'critical',
+              title: `Unregistered / Takeover-Ready Package "${dep.name}" (Slopsquatting Risk)`,
+              description: scope
+                ? `Package "${dep.name}" returns 404 under unverified scope "${scope}". Whoever owns or claims "${scope}" on npm can publish malicious code under this exact name to compromise callers.`
+                : `Unscoped package "${dep.name}" returns 404 on registry.npmjs.org. Any attacker can register this name today and execute arbitrary code on anyone installing or running this config.`,
+              file: dep.manifestPath,
+              evidence: `"${dep.name}": "${dep.versionSpec}"`,
+              remediation: `Remove "${dep.name}" immediately and replace with the verified official package name.`,
+            });
+          }
           continue;
         }
 
         if (!res.ok) continue;
 
         const meta = (await res.json()) as {
+          description?: string;
           time?: Record<string, string>;
           'dist-tags'?: Record<string, string>;
           versions?: Record<
             string,
-            { scripts?: Record<string, string>; hasInstallScript?: boolean }
+            {
+              description?: string;
+              scripts?: Record<string, string>;
+              hasInstallScript?: boolean;
+            }
           >;
         };
+
+        // Detect npm security takedown placeholders (e.g. 0.0.1-security / "security holding package")
+        const latestTag = meta['dist-tags']?.latest ?? '';
+        const latestDesc = String(
+          meta.description ?? (latestTag ? meta.versions?.[latestTag]?.description : '') ?? '',
+        ).toLowerCase();
+
+        if (
+          latestTag === '0.0.1-security' ||
+          latestTag.endsWith('-security') ||
+          latestDesc.includes('security holding package')
+        ) {
+          findings.push({
+            id: `sc-tombstone-${seq++}`,
+            ruleId: 'SC-NPM-SECURITY-TOMBSTONE',
+            category: 'supply-chain',
+            severity: 'critical',
+            title: `Removed Malware Security Placeholder "${dep.name}" (${latestTag || '0.0.1-security'})`,
+            description: `npm replaced "${dep.name}" with a security holding placeholder (${
+              latestTag || '0.0.1-security'
+            }) after taking down a malicious package under this name. Referencing it indicates historic malware exposure or a squatted package name.`,
+            file: dep.manifestPath,
+            evidence: `${dep.name} -> latest: ${latestTag || '0.0.1-security'}`,
+            remediation: `Remove "${dep.name}" immediately, rotate credentials on any host that previously executed it, and migrate to the official upstream tool.`,
+          });
+          continue;
+        }
 
         const createdIso = meta.time?.created;
         if (createdIso && record) {
@@ -394,8 +577,6 @@ export async function auditSupplyChainLive(
           }
         }
 
-        // Check target or latest version for hidden install scripts
-        const latestTag = meta['dist-tags']?.latest;
         const targetVer =
           (dep.resolvedVersion && meta.versions?.[dep.resolvedVersion]
             ? dep.resolvedVersion
