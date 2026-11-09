@@ -6,6 +6,7 @@
 
 [![Web Scanner](https://img.shields.io/badge/Live_Scanner-repoxray.pages.dev-06b6d4?style=flat-square&labelColor=0f172a)](https://repoxray.pages.dev)
 [![npm version](https://img.shields.io/npm/v/rxray?style=flat-square&labelColor=0f172a&color=38bdf8)](https://www.npmjs.com/package/rxray)
+[![npm downloads](https://img.shields.io/npm/dt/rxray?style=flat-square&labelColor=0f172a&color=10b981)](https://www.npmjs.com/package/rxray)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-10b981?style=flat-square&labelColor=0f172a)](https://www.npmjs.com/package/rxray)
 [![RepoXray Security & AI Score](https://img.shields.io/badge/RepoXray-A%2B%20(100%2F100)-10b981?style=flat-square&labelColor=0f172a)](https://repoxray.pages.dev/?repo=Ra9mirez11/repoxray)
 [![License: MIT](https://img.shields.io/badge/License-MIT-94a3b8?style=flat-square&labelColor=0f172a)](./LICENSE)
