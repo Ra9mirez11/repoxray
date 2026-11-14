@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-11-14
+
+### Added
+- **GitHub PR / Issue Markdown Scorecard & Automatic `$GITHUB_STEP_SUMMARY` (`compiler.ts`, `cli/index.ts`):** Added `npx rxray . --markdown` and automatic GitHub Actions Job Summary output (`$GITHUB_STEP_SUMMARY`) rendering a full 4-pillar Markdown table and clickable RepoXray score badge on every CI run.
+- **1-Click Viral Share Strip & MCP Preset (`App.tsx`):** Added `Copy PR / Issue Report`, `Copy Badge`, and `Share on X` quick-action buttons directly to the main scan results bar, plus `modelcontextprotocol/servers` in the instant GitHub presets.
+
 ## [0.3.2] - 2026-11-08
 
 ### Added

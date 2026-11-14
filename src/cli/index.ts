@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { compileShield } from '../core/compiler';
 import { isBinaryFileName, SKIP_DIRS } from '../core/fsFilters';
@@ -176,6 +176,7 @@ ${ANSI.bold}Commands & Options:${ANSI.reset}
   --force              Overwrite existing .aiignore / AGENTS.md / pre-commit hook
   --offline            Skip live OSV.dev & npm registry network checks
   --json               Output raw JSON report (for CI/CD pipelines)
+  --markdown           Output GitHub PR / Issue Markdown scorecard table
   --ci                 Fail with exit code 1 if Critical/High issues exist or score < 75
   --fail-below <num>   Fail with exit code 1 if score is below <num> (0-100)
   -h, --help           Show this help message
@@ -190,6 +191,8 @@ async function main(): Promise<void> {
   }
 
   const jsonOutput = args.includes('--json');
+  const markdownOutput = args.includes('--markdown');
+  const quietProgress = jsonOutput || markdownOutput;
   const offline = args.includes('--offline');
   const writeShield = args.includes('--write-shield');
   const force = args.includes('--force');
@@ -240,9 +243,9 @@ async function main(): Promise<void> {
     files = await walkLocalDirectory(localRootDir);
   } else if (parseGitHubInput(target)) {
     const remote = await fetchGitHubRepoFiles(target, (msg) => {
-      if (!jsonOutput) process.stderr.write(`${ANSI.dim}${stripTerminalEscapes(msg)}${ANSI.reset}\r`);
+      if (!quietProgress) process.stderr.write(`${ANSI.dim}${stripTerminalEscapes(msg)}${ANSI.reset}\r`);
     });
-    if (!jsonOutput) process.stderr.write(' '.repeat(72) + '\r');
+    if (!quietProgress) process.stderr.write(' '.repeat(72) + '\r');
     projectName = remote.projectName;
     files = remote.files;
   } else {
@@ -257,8 +260,22 @@ async function main(): Promise<void> {
     offline,
   });
 
+  const compiled = compileShield(report);
+
+  // Automatically populate GitHub Actions Job Summary when running in GitHub Actions
+  const ghStepSummaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (ghStepSummaryPath) {
+    try {
+      await appendFile(ghStepSummaryPath, `${compiled.prCommentMarkdown}\n\n`, 'utf8');
+    } catch {
+      // Ignore summary write errors in restricted runners
+    }
+  }
+
   if (jsonOutput) {
     console.log(JSON.stringify(report, null, 2));
+  } else if (markdownOutput) {
+    console.log(compiled.prCommentMarkdown);
   } else {
     const gradeColor =
       report.score >= 85 ? ANSI.green : report.score >= 70 ? ANSI.yellow : ANSI.red;
@@ -300,7 +317,6 @@ async function main(): Promise<void> {
   }
 
   if (writeShield && localRootDir) {
-    const compiled = compileShield(report);
     const writes: Array<{ name: string; content: string }> = [
       { name: '.aiignore', content: compiled.aiIgnore },
       { name: 'AGENTS.md', content: compiled.agentsMd },
@@ -310,10 +326,10 @@ async function main(): Promise<void> {
       const dest = join(localRootDir, item.name);
       const status = await safeWriteLocalFile(dest, item.content, force);
       if (status === 'skipped') {
-        if (!jsonOutput) {
+        if (!quietProgress) {
           console.log(`${ANSI.yellow}Skipped ${item.name} (already exists; pass --force to overwrite).${ANSI.reset}`);
         }
-      } else if (!jsonOutput) {
+      } else if (!quietProgress) {
         console.log(`${ANSI.green}Wrote ${item.name} -> ${dest}${ANSI.reset}`);
       }
     }

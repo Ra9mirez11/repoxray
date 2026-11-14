@@ -39,6 +39,8 @@ describe('RepoXray Core Engine', () => {
     expect(compiled.aiIgnore).toContain('package-lock.json');
     expect(compiled.agentsMd).toContain('AGENTS.md');
     expect(compiled.badgeSvg).toContain('<svg');
+    expect(compiled.prCommentMarkdown).toContain('### RepoXray Security & AI Guardrail Audit');
+    expect(compiled.prCommentMarkdown).toContain('| **Overall Grade** |');
   });
 
   it('scores a clean, properly shielded repository as Grade A+ (100/100)', async () => {

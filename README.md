@@ -69,6 +69,7 @@ npx rxray . --json > repoxray-audit.json
 | `--ci` | Exits with code `1` if any Critical/High finding is found or score is below `75` |
 | `--fail-below <0-100>` | Custom minimum passing score threshold for CI/CD gates |
 | `--offline` | Skips live `OSV.dev` and `registry.npmjs.org` network telemetry |
+| `--markdown` | Outputs a formatted GitHub PR / Issue Markdown scorecard table (also written automatically to `$GITHUB_STEP_SUMMARY` in GitHub Actions) |
 | `--json` | Prints machine-readable JSON audit report to `stdout` |
 
 ---

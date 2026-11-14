@@ -115,5 +115,6 @@ export interface CompiledShield {
   badgeSvg: string;
   badgeMarkdown: string;
   shareSummary: string;
+  prCommentMarkdown: string;
   markdownReport: string;
 }

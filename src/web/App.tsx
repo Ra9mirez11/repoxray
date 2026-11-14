@@ -572,7 +572,12 @@ export function App() {
 
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <span className="text-xs text-slate-500 mr-1">Instant presets:</span>
-                {['Ra9mirez11/repoxray', 'expressjs/express', 'colinhacks/zod'].map((sample) => (
+                {[
+                  'Ra9mirez11/repoxray',
+                  'modelcontextprotocol/servers',
+                  'expressjs/express',
+                  'colinhacks/zod',
+                ].map((sample) => (
                   <button
                     key={sample}
                     type="button"
@@ -771,45 +776,74 @@ export function App() {
               </div>
             </div>
 
-            {/* Primary Action Tab Bar */}
-            <div className="border-b border-white/10 flex flex-wrap gap-2">
-              {(
-                [
-                  {
-                    id: 'findings',
-                    label: `Findings Radar (${report.findings.length})`,
-                  },
-                  {
-                    id: 'fix-prompt',
-                    label: 'Zero-Token AI Fix Prompt',
-                  },
-                  {
-                    id: 'guardrails',
-                    label: 'Compiled AGENTS.md & .aiignore',
-                  },
-                  {
-                    id: 'tokens',
-                    label: 'Token Footprint Map',
-                  },
-                  {
-                    id: 'share',
-                    label: 'Badge, CI Gate & Export',
-                  },
-                ] as Array<{ id: ActiveTab; label: string }>
-              ).map((tab) => (
+            {/* Primary Action Tab Bar + 1-Click Viral Share Strip */}
+            <div className="border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    {
+                      id: 'findings',
+                      label: `Findings Radar (${report.findings.length})`,
+                    },
+                    {
+                      id: 'fix-prompt',
+                      label: 'Zero-Token AI Fix Prompt',
+                    },
+                    {
+                      id: 'guardrails',
+                      label: 'Compiled AGENTS.md & .aiignore',
+                    },
+                    {
+                      id: 'tokens',
+                      label: 'Token Footprint Map',
+                    },
+                    {
+                      id: 'share',
+                      label: 'Badge, CI Gate & Export',
+                    },
+                  ] as Array<{ id: ActiveTab; label: string }>
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition cursor-pointer ${
+                      activeTab === tab.id
+                        ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10 rounded-t-lg'
+                        : 'border-transparent text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pb-2">
                 <button
-                  key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2.5 text-sm font-medium border-b-2 transition cursor-pointer ${
-                    activeTab === tab.id
-                      ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10 rounded-t-lg'
-                      : 'border-transparent text-slate-400 hover:text-slate-200'
-                  }`}
+                  onClick={() => triggerCopy('quick-pr-md', compiled.prCommentMarkdown)}
+                  className="px-3 py-1.5 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 text-xs font-mono font-semibold text-emerald-300 transition cursor-pointer"
+                  title="Copy formatted Markdown table for GitHub PRs or Issues"
                 >
-                  {tab.label}
+                  {copiedKey === 'quick-pr-md' ? 'COPIED PR REPORT' : 'Copy PR / Issue Report'}
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => triggerCopy('quick-badge', compiled.badgeMarkdown)}
+                  className="px-3 py-1.5 rounded-md bg-white/[0.05] hover:bg-white/[0.11] border border-white/10 text-xs font-mono text-slate-200 transition cursor-pointer"
+                  title="Copy README Shield Badge Markdown"
+                >
+                  {copiedKey === 'quick-badge' ? 'COPIED BADGE' : 'Copy Badge'}
+                </button>
+                <a
+                  href={`https://x.com/intent/tweet?text=${encodeURIComponent(compiled.shareSummary)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/35 text-xs font-mono font-semibold text-cyan-200 transition"
+                >
+                  Share on X
+                </a>
+              </div>
             </div>
 
             {/* TAB 1: FINDINGS RADAR */}
@@ -1165,11 +1199,28 @@ export function App() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
+                        onClick={() => triggerCopy('share-pr-md', compiled.prCommentMarkdown)}
+                        className="px-3 py-1.5 rounded-md bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-xs font-semibold cursor-pointer"
+                      >
+                        {copiedKey === 'share-pr-md'
+                          ? 'COPIED PR / ISSUE TABLE'
+                          : 'Copy GitHub PR / Issue Table'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => triggerCopy('share-post', compiled.shareSummary)}
                         className="px-3 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-semibold text-slate-100 cursor-pointer"
                       >
                         {copiedKey === 'share-post' ? 'COPIED SUMMARY' : 'Copy X / Reddit Summary'}
                       </button>
+                      <a
+                        href={`https://x.com/intent/tweet?text=${encodeURIComponent(compiled.shareSummary)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/35 text-xs font-semibold text-cyan-200"
+                      >
+                        Post Score on X
+                      </a>
                       <button
                         type="button"
                         onClick={() =>
@@ -1331,7 +1382,7 @@ export function App() {
       <footer className="relative z-10 border-t border-white/10 bg-[#04070d]/90 py-6 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-2 text-center">
           <div className="text-xs font-mono text-slate-400">
-            RepoXray Engine v0.3.2 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
+            RepoXray Engine v0.3.3 — 100% Client-Side Web Worker Execution | Powered by OSV.dev &amp;
             Public Registry Telemetry | CLI: <code className="text-cyan-300">npx rxray</code>
           </div>
           <p className="text-[11px] text-slate-500 max-w-3xl mx-auto leading-relaxed">

@@ -60,6 +60,10 @@ export function generateBadgeSvg(grade: Grade, score: number): string {
 </svg>`;
 }
 
+function sanitizeTableCell(value: string, maxLen = 140): string {
+  return sanitizePromptField(value, maxLen).replace(/\|/g, '\\|');
+}
+
 export function compileShield(report: ScanReport): CompiledShield {
   const safeProjectName = sanitizePromptField(report.projectName, 100) || 'repository';
 
@@ -231,6 +235,54 @@ export function compileShield(report: ScanReport): CompiledShield {
     `Scan yours free: ${targetBadgeLink}  |  CLI: npx rxray .`,
   ].join('\n');
 
+  // 5. Compact GitHub PR / Issue / GitHub Actions Job Summary Markdown Table
+  const prCommentLines: string[] = [
+    `### RepoXray Security & AI Guardrail Audit (\`${safeProjectName}\`)`,
+    '',
+    badgeMarkdown,
+    '',
+    `| Pillar | Score | Status |`,
+    `| :--- | :--- | :--- |`,
+    `| **Overall Grade** | **${report.grade} (${report.score}/100)** | ${report.findings.length} total finding(s) (${report.durationMs} ms) |`,
+    `| Supply-Chain & Slopsquatting | ${report.subScores.supplyChain}/100 | ${report.dependencies.length} dependencies checked |`,
+    `| Secret & MCP \`env\` Hygiene | ${report.subScores.secrets}/100 | \`.env\`, keys & MCP configs |`,
+    `| Static Code Safety | ${report.subScores.codeSafety}/100 | Injection & \`eval\` sinks |`,
+    `| AI Context Readiness | ${report.subScores.aiReadiness}/100 | ${report.totalTokens.toLocaleString()} tokens (${report.tokenSavingsPercent}% reducible) |`,
+    '',
+  ];
+
+  if (report.findings.length === 0) {
+    prCommentLines.push(
+      '> **Zero security, supply-chain, or AI context issues detected.**',
+      '',
+    );
+  } else {
+    prCommentLines.push(
+      `| Severity | Rule | Location | Issue & Remediation |`,
+      `| :--- | :--- | :--- | :--- |`,
+    );
+    for (const f of report.findings.slice(0, 15)) {
+      const loc = sanitizeTableCell(f.line ? `${f.file}:${f.line}` : f.file, 90);
+      const title = sanitizeTableCell(f.title, 110);
+      const fix = sanitizeTableCell(f.remediation, 140);
+      prCommentLines.push(
+        `| **${f.severity.toUpperCase()}** | \`${f.ruleId}\` | \`${loc}\` | **${title}** — ${fix} |`,
+      );
+    }
+    if (report.findings.length > 15) {
+      prCommentLines.push(
+        `| ... | ... | ... | *+${report.findings.length - 15} additional finding(s). Run \`npx rxray .\` for full report.* |`,
+      );
+    }
+    prCommentLines.push('');
+  }
+
+  prCommentLines.push(
+    `*Scanned with [RepoXray](${targetBadgeLink}) (\`npx rxray .\`) — zero-upload supply-chain, MCP secret & AI context scanner.*`,
+  );
+
+  const prCommentMarkdown = prCommentLines.join('\n');
+
   const mdReportLines: string[] = [
     `# RepoXray Security & AI Readiness Audit Report`,
     '',
@@ -283,6 +335,7 @@ export function compileShield(report: ScanReport): CompiledShield {
     badgeSvg,
     badgeMarkdown,
     shareSummary,
+    prCommentMarkdown,
     markdownReport: mdReportLines.join('\n'),
   };
 }

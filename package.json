@@ -1,6 +1,6 @@
 {
   "name": "rxray",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "RepoXray CLI — Zero-upload security, supply-chain, AI slopsquatting, secret leak, and LLM context X-Ray for any codebase.",
   "type": "module",
   "license": "MIT",
